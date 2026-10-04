@@ -6,7 +6,7 @@
       "url": "https://github.com/daraskme/krea2-darask.git",
       "revision": "af53746e5880c26b3798b077a5f2e14868a13408",
       "patch": "krea2.patch",
-      "sha256": "e6c42ea9601297f595182d2960b97f423ddefc77dfc58f0cfa1beb8b3528ff74"
+      "sha256": "403f0dac13ea8262b50d2631f29e5c9d6b4845836a719346e8218651ed57ee3d"
     },
     {
       "name": "h3",

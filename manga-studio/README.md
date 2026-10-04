@@ -64,6 +64,8 @@ Krea 2 の新しい画像は `krea2-darask/outputs/`、H3 は `minimaxH3-darask/
 
 エージェントプリセットは「Mang-AI · Qwen3.8」の1つです。DeepSeekのモデル・認証・検索経路を無効にし、DSHのツール実行機構をローカルQwenに接続しています。画面と公式プラグインの設定表示は日本語化しています。
 
+実QwenによるWeb検索と生成画面ツール呼び出し、実Ortenzyaによる1ページ3コマの日本語脚本JSON生成・保存を確認しています。モデルは必要時に読み込み、ルーター内では1モデルずつ切り替えます。
+
 Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。チーム・サブエージェント・自動承認レビューは共通モデル設定を使います。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルQwenが作ります。
 
 ## メディアギャラリーと整理済み素材
@@ -95,6 +97,14 @@ Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell�
 「生成画面を開いて」で `media_open_generator` を使います。モデル・LoRAの選択、手動生成、進捗・中止、結果の高解像度化ができます。
 
 Krea 2にはMUSE v3.5 INT8 Extended、Moody V8.0、Redcraft 3.0を登録しています。INT8 ConvRotの演算に対応し、生成は8ステップ、確認用は4ステップ加速LoRA、Hiresは既定1.5倍・4ステップ・denoise 0.25です。3モデルの実生成とRedcraftの768px Hiresを確認しています。
+
+[lodestones/Kroma](https://huggingface.co/lodestones/Kroma) の `kroma-v0.3-turbo.safetensors` を導入済みです。モデルIDは `kroma-v03-turbo`。BF16の本体と既存Kreaのエンコーダー・VAEを使い、8ステップ生成、スタイルLoRA、生成後のHiresを選べます。Kromaでは未検証の汎用4ステップLoRAを自動追加しません。配布元のREADMEの推奨値はv0.2向けですが、v0.3もこの環境で実生成を確認しました。
+
+RTX PRO 6000で、整理済み `krea2_manga_style` LoRA（強度0.6）を使った512×512・8ステップ生成は読込込み17.9秒（推論2.0秒）、768×768への1.5倍・4ステップHiresは1.7秒でした。PyTorchのGPU予約メモリ最大は約36.0GiB。これは1枚の動作確認結果で、解像度・LoRA・プロンプトで変わります。試験後はモデルを解放しています。
+
+生成画面で **モデル一覧を更新 → Kroma v0.3 Turbo** を選びます。漫画編集画面でも **作画モデル → モデル一覧を更新** から選べます。エージェントには「Kromaで生成して」と指示でき、`krea_generate` と `manga_render` の `model_id: "kroma-v03-turbo"` で指定します。漫画ジョブにはモデル・LoRAを保存するので、待機中に既定値を変えても選択が保持されます。
+
+別環境への導入は `python3 manga-studio/scripts/setup-kroma.py`。固定リビジョンの約25.6GBをSSDへ少量ずつ保存し、SHA-256を照合してから登録します。中断時は再実行で再開でき、Civitaiキーは送信しません。既存KreaのDiffusers構成が必要です。重み自体はGitHubに保存しません。
 
 H3にはEros Max beta5 INT8、DaSiWa Hybrid Turbo v3を追加しています。蒸留済みモデルは8ステップを既定とし、加速LoRAの二重適用を防ぎます。`h3_generate` の `latent_refine` は低解像度生成→潜在拡大→短い再生成、`media_upscale` は生成済み動画の画素拡大です。
 
@@ -261,6 +271,8 @@ python3 tests/test_python_bridge.py
 ```
 
 ギャラリーのAPI・トークン分離・パス制限・動画Rangeは `npm test` に含まれます。`node_modules/.bin/node tests/gallery-browser.mjs` はローカルの既存テスト画像・動画を使い、サムネイル、再生、キャプション、漫画編集への移動、モバイル表示を確認します。新しい画像・動画の生成はしません。`tests/live-h3-hires.mjs`、`tests/live-longvideo.mjs` はGPUを使うため、実行前に利用者へ知らせてください。
+
+KromaのGUI選択は `node_modules/.bin/node tests/kroma-browser.mjs`（Kreaサーバー起動済み、生成なし）。実モデルの生成とHiresは `tests/live-kroma.mjs`（GPUを使用、実行前に通知）。`TEST_STYLE_LORA=1` で整理済み漫画スタイルLoRAも使います。`TEST_SERVICE=1 node_modules/.bin/node tests/dsh-smoke.mjs` は実DSHの管理プロセスでKreaサーバーを起動・停止しますが、モデルは読み込みません。
 
 ブラウザテストは Playwright Chromium または `CHROME_PATH` の Chrome を使います。NixOS の Chrome は自動検出します。DSH 統合テストでは `TEST_PYTHON` で Python 3.12 以降を指定できます。Gemma/Qwen は模擬 API、Krea は公式と同じ関数インターフェースのテスト用実装です。実機スモークテストは起動・入出力の機能確認であり、作品品質・長時間学習の品質・性能評価は含みません。
 

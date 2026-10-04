@@ -83,6 +83,23 @@ test('manga page uses the installed Krea API and collects real PNG bytes',async 
   assert.equal(service.store.getJob(job.id).status,'completed');
   assert.equal(service.status('alice').project.pages[0].panels.filter(p=>p.image).length,3);
   assert.equal(f.requests.filter(r=>r.url==='/api/generate').length,3);
+  assert(f.requests.filter(r=>r.url==='/api/generate').every(r=>r.body.model_id==='krea2-turbo-official'));
+});
+
+test('queued manga rendering retains the selected checkpoint and LoRA independently of later defaults',async t=>{
+  const f=await fixture(t);f.c.dataDir=join(f.root,'manga');f.c.krea.backend='studio';
+  const service=new MangaService(f.c,{});t.after(()=>service.close());
+  let p=service.create('alice',{title:'test',brief:'test'});
+  p=service.setScript('alice',{script,revision:p.revision});service.approve(p.id,p.revision);
+  let release;service.queue=new Promise(resolve=>release=resolve);
+  const loras=[{id:'user/style/test.safetensors',weight:0.5}];
+  const job=await service.render('alice',{pageId:'p1',model_id:'kroma-v03-turbo',preset:'turbo8',loras});
+  loras[0].weight=0;f.c.krea.model='another-model';f.c.krea.loras=[];
+  release();await service.queue;
+  assert.equal(service.store.getJob(job.id).status,'completed');
+  const sent=f.requests.filter(r=>r.url==='/api/generate');assert.equal(sent.length,3);
+  for(const {body} of sent){assert.equal(body.model_id,'kroma-v03-turbo');assert.equal(body.preset,'turbo8');assert.equal(body.loras[0].weight,0.5);}
+  assert.equal(service.store.getJob(job.id).generation.model_id,'kroma-v03-turbo');
 });
 
 test('cancelling API rendering also cancels its remote job',async t=>{

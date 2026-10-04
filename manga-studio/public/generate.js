@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id),hash=new URLSearchParams(location.hash.slice(1));
-const key=hash.get('project'),token=hash.get('token');let current,serial=0;
+const key=hash.get('project'),token=hash.get('token');let current,serial=0,modelCatalog=[];
 const galleryButton=document.createElement('button');galleryButton.textContent='メディアギャラリー';document.querySelector('h1').after(galleryButton);
 galleryButton.onclick=async()=>{try{const r=await fetch(`/api/${key}/gallery`,{headers:{Authorization:`Bearer ${token}`}});const v=await r.json();if(!r.ok)throw Error(v.error);location.href=v.url;}catch(e){$('status').textContent=e.message;}};
 async function api(action,body){const r=await fetch(`/api/${key}/generate/${action}`,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...body===undefined?{}:{'Content-Type':'application/json'}},body:body===undefined?undefined:JSON.stringify(body)});const value=await r.json();if(!r.ok)throw Error(value.error);return value;}
@@ -9,20 +9,24 @@ function args(){const provider=$('provider').value,a={provider,prompt:$('prompt'
 async function refresh(){
  const p=$('provider').value,s=await api('status',{provider:p});$('model').replaceChildren();
  const list=p==='longvideo'?s.models:p==='krea'?s.models.items:s.models.models;
- for(const m of list){const value=typeof m==='string'?m:(m.id||m.path||m.name);const o=new Option(typeof m==='string'?m:(m.label||m.name||value),value);if(p==='longvideo'&&value.includes('TurboV3'))o.selected=true;$('model').add(o);}
+ modelCatalog=list;
+ for(const m of list){const value=typeof m==='string'?m:(m.id||m.path||m.name);const o=new Option(typeof m==='string'?m:(m.label||m.name||value),value);o.disabled=m.available===false;if(p==='longvideo'&&value.includes('TurboV3'))o.selected=true;$('model').add(o);}
+ updatePresets();
  $('latent').replaceChildren(new Option('使用しない','off'));
  if(p==='longvideo')for(const value of s.options.optional.latent_upscale[0].filter(x=>x!=='off'))$('latent').add(new Option(value,value));
  $('loras').replaceChildren();
  const adapters=p==='longvideo'?s.loras:p==='krea'?s.loras.items:s.models.loras;
  for(const lora of adapters){const id=typeof lora==='string'?lora:(lora.id||lora.name);if(/4step|turbo|lightx2v|fasth3|pdd|taomate/i.test(id))continue;const option=new Option(typeof lora==='string'?lora:(lora.name||id),id);option.disabled=lora.available===false;$('loras').add(option);}
 }
+function updatePresets(){const model=modelCatalog.find(m=>m.id===$('model').value),draft=$('quality').querySelector('option[value="draft"]');draft.disabled=$('provider').value==='krea'&&model?.supported_presets&&!model.supported_presets.includes('fast4');if(draft.disabled&&$('quality').value==='draft')$('quality').value='balanced';}
+$('model').onchange=updatePresets;
 async function history(){const rows=await api('history');$('history').replaceChildren();for(const row of rows){const b=document.createElement('button');b.textContent=`${row.provider} · ${row.request.prompt?.slice(0,30)||'高解像度化'} · ${row.id.slice(0,8)}`;b.onclick=run(()=>follow(row.id));$('history').append(b);}}
 async function follow(id){current=id;const ticket=++serial;$('output').replaceChildren();$('cancel').disabled=false;$('upscale').disabled=true;async function poll(){if(ticket!==serial)return;try{const r=await api('job',{id,action:'status'});if(ticket!==serial)return;show(r);const done=!['running','queued','loading','generating'].includes(r.job.status);$('cancel').disabled=done;$('upscale').disabled=r.job.status!=='completed'||r.provider==='longvideo';if(r.outputUrl){const link=document.createElement('a');link.href=r.outputUrl;link.target='_blank';link.rel='noreferrer';link.textContent='生成結果を開く';$('output').replaceChildren(link);}if(!done)setTimeout(poll,2500);}catch(e){$('status').textContent=e.message;}}await poll();}
 $('provider').onchange=()=>{const p=$('provider').value;$('long').hidden=p!=='longvideo';$('short').hidden=p==='longvideo';$('plan').hidden=p!=='longvideo';$('frames').disabled=p==='krea';$('first').disabled=p==='krea';$('width').value=p==='krea'?1024:960;$('height').value=p==='krea'?1024:544;$('model').replaceChildren(new Option('一覧を更新してください',''));};$('provider').onchange();
 $('start').onclick=run(async()=>{show(await api('service',{provider:$('provider').value,action:'start'}));try{await refresh();}catch{$('status').textContent='起動中です。数秒後にモデル一覧を更新してください';}});
 $('stop').onclick=run(async()=>show(await api('service',{provider:$('provider').value,action:'stop'})));
 $('refresh').onclick=run(refresh);$('plan').onclick=run(async()=>show(await api('plan',args())));
-$('provider').addEventListener('change',()=>{$('loras').replaceChildren();$('latent').replaceChildren(new Option('使用しない','off'));});
+$('provider').addEventListener('change',()=>{modelCatalog=[];updatePresets();$('loras').replaceChildren();$('latent').replaceChildren(new Option('使用しない','off'));});
 $('submit').onclick=run(async()=>{const value=args();value.loras=[...$('loras').selectedOptions].map(o=>({[value.provider==='krea'?'id':'path']:o.value,weight:Number($('lora-weight').value),enabled:true}));if(value.provider==='h3'&&value.model.includes('Hybrid-v2'))value.preset='quality';if(value.provider==='longvideo')await api('plan',value);const r=await api('submit',value);await history();await follow(r.id);});
 $('cancel').onclick=run(async()=>{show(await api('job',{id:current,action:'cancel'}));++serial;$('cancel').disabled=true;});
 $('upscale').onclick=run(async()=>{const r=await api('upscale',{id:current});await history();await follow(r.id);});

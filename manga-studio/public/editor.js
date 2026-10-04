@@ -15,6 +15,12 @@ const artHeading=document.createElement('h2');artHeading.textContent='画像の�
 const artSelect=document.createElement('select');artSelect.id='artPanel';artSelect.setAttribute('aria-label','修正するコマ');
 const artButton=document.createElement('button');artButton.id='editArtwork';artButton.textContent='画像編集を開く';
 artSection.append(artHeading,artSelect,artButton);document.querySelector('.inspector').append(artSection);
+const generationSection=document.createElement('section');generationSection.className='dialogues';
+const generationHeading=document.createElement('h2');generationHeading.textContent='作画モデル';
+const generationModel=document.createElement('select');generationModel.id='generationModel';generationModel.setAttribute('aria-label','作画モデル');generationModel.add(new Option('既定のKreaモデル',''));
+const modelRefresh=document.createElement('button');modelRefresh.id='refreshModels';modelRefresh.textContent='モデル一覧を更新';
+generationSection.append(generationHeading,generationModel,modelRefresh);document.querySelector('.inspector').append(generationSection);
+modelRefresh.onclick=()=>act(async()=>{const result=await api('models');const selected=generationModel.value;generationModel.replaceChildren(new Option('既定のKreaモデル',''));for(const model of result.items){const option=new Option(model.name,model.id);option.disabled=!model.available||model.family!=='turbo';generationModel.add(option);}generationModel.value=[...generationModel.options].some(o=>o.value===selected&&!o.disabled)?selected:'';message('作画モデルを更新しました');});
 const currentPage=()=>project?.pages[pageIndex];
 function message(value,error=false){$('status').textContent=value;$('status').style.color=error?'#ac4f3d':'';}
 async function api(action='',body) {
@@ -63,7 +69,7 @@ function drawAll(jobs=[]){
   }));
   $('jobs').replaceChildren();
   for(const job of jobs.slice(0,4)){
-    const line=document.createElement('div');line.textContent=`${job.pageId} · ${job.status} (${job.completed.length}/${job.panels.length})`;
+    const line=document.createElement('div');line.textContent=`${job.pageId} · ${job.status} (${job.completed.length}/${job.panels.length})${job.generation?.model_id?' · '+job.generation.model_id:''}`;
     if(['running','queued'].includes(job.status)){const stop=document.createElement('button');stop.textContent='中止';stop.onclick=()=>act(async()=>{await api('cancel',{jobId:job.id});message('中止を要求しました');});line.append(stop);}
     if(job.error){const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('p');summary.textContent='エラー';pre.textContent=job.error;details.append(summary,pre);line.append(details);}
     $('jobs').append(line);
@@ -115,7 +121,7 @@ $('canvas').addEventListener('pointercancel',()=>{drag=null;});
 $('refresh').onclick=()=>act(()=>load());
 artButton.onclick=()=>act(async()=>{requireSaved();message('画像編集を準備しています');const result=await api('open-edit',{pageId:currentPage().id,panelId:artSelect.value});location.href=result.url;});
 $('approve').onclick=()=>act(async()=>{requireSaved();const result=await api('approve',{revision:project.revision});project=result.project;drawAll();message('脚本を確定しました。作画を開始できます');});
-$('render').onclick=()=>act(async()=>{requireSaved();const {job}=await api('render',{pageId:currentPage().id});message(`Krea 2 の生成キューに追加しました · ${job.id.slice(0,8)}`);await load(true);});
+$('render').onclick=()=>act(async()=>{requireSaved();message('GPUを使用してこのページを作画します');const {job}=await api('render',{pageId:currentPage().id,...generationModel.value?{model_id:generationModel.value,preset:'turbo8'}:{}});message(`Krea 2 の生成キューに追加しました · ${job.id.slice(0,8)}`);await load(true);});
 $('script').onclick=()=>{if(!project)return;const script={pages:project.pages.map(({layout,purpose,panels})=>({layout,purpose,panels:panels.map(({action,artPrompt,dialogue})=>({action,artPrompt,dialogue}))}))};$('scriptText').value=JSON.stringify(script,null,2);$('scriptDialog').showModal();};
 $('closeScript').onclick=()=>$('scriptDialog').close();
 $('saveScript').onclick=()=>act(async()=>{requireSaved();const result=await api('script',{script:JSON.parse($('scriptText').value),revision:project.revision});project=result.project;pageIndex=0;selected='';draft=null;drawAll();$('scriptDialog').close();message('脚本を保存しました。内容を確認し、確定してください');});

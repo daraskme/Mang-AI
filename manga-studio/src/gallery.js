@@ -71,7 +71,7 @@ export class MediaGallery {
       if(!this.pending.has(id)){
         const work=this.tail.then(async()=>{
           const temporary=target+'.part',signal=AbortSignal.any([this.abort.signal,AbortSignal.timeout(30000)]);
-          const h=this.service.subprocess.spawn({argv:['ffmpeg','-nostdin','-y','-v','error','-threads','1','-protocol_whitelist','file,pipe','-i',resolved,'-vf','scale=360:360:force_original_aspect_ratio=decrease','-frames:v','1','-threads','1','-f','image2','-c:v','mjpeg',temporary],stdio:{stdout:'ignore',stderr:{maxBytes:1024}},signal});
+          const h=this.service.subprocess.spawn({argv:['ffmpeg','-nostdin','-y','-v','error','-threads','1','-protocol_whitelist','file,pipe','-i',resolved,'-vf','scale=360:360:force_original_aspect_ratio=decrease','-frames:v','1','-threads','1','-f','image2','-c:v','mjpeg',temporary],cwd:this.service.store.root,stdio:{stdin:'ignore',stdout:{maxBytes:1024},stderr:{maxBytes:1024}},signal,graceMs:3000});
           try{const r=await h.done;await h.waitForExit();if(r.exitCode!==0)throw Error('サムネイルを作成できません');await rename(temporary,target);}finally{await unlink(temporary).catch(()=>{});}
         });this.tail=work.catch(()=>{});this.pending.set(id,work.finally(()=>this.pending.delete(id)));
       }

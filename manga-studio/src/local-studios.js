@@ -78,7 +78,7 @@ export class LocalStudios {
         // An already stopped service is safe to stop again via systemd.
       }
     }
-    const handle=this.subprocess.spawn({argv:['systemctl','--user',action,units[provider]],stdio:{stdout:'pipe',stderr:{maxBytes:4096}},signal});
+    const handle=this.subprocess.spawn({argv:['systemctl','--user',action,units[provider]],cwd:this.store.root,stdio:{stdin:'ignore',stdout:{maxBytes:1024},stderr:{maxBytes:4096}},signal,graceMs:3000});
     const result=await handle.done;await handle.waitForExit();
     if(result.exitCode!==0)throw new Error(`systemctl ${action} が失敗しました: ${handle.collected.stderr?.readFrom(0)?.text||result.exitCode}`);
     return {provider,action,url:this.base(provider),note:action==='start'?'サーバーを起動しました。media_status で準備状況を確認してください。':'停止しました。'};
@@ -157,7 +157,7 @@ export class LocalStudios {
     return {id:this.save(session,'media',{provider:ref.provider,remoteId,request:body,parent:id}),provider:ref.provider,job};
   }
   async renderKrea(request,signal,onJob=()=>{}) {
-    const submitted=await this.request('krea','/api/generate',{body:{...request,output:undefined,id:undefined,model_id:this.config.krea.model,preset:this.config.krea.preset||'turbo8',attention_backend:'sdpa',loras:this.config.krea.loras||[]},signal});
+    const submitted=await this.request('krea','/api/generate',{body:{...request,output:undefined,id:undefined,model_id:request.model_id||this.config.krea.model,preset:request.preset||this.config.krea.preset||'turbo8',attention_backend:'sdpa',loras:request.loras??this.config.krea.loras??[]},signal});
     const id=submitted.job_id;if(!id)throw new Error('Krea job_id がありません');onJob(id);
     try {
       while(true) {

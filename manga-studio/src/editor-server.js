@@ -145,6 +145,10 @@ export async function startEditor(service, port) {
       }
       const p=service.store.get(id);
       if(req.method==='GET' && !action) {send(200,{project:p,jobs:service.store.jobs(id),warnings:letteringWarnings(p)});return;}
+      if(req.method==='GET' && action==='models') {
+        if(service.config.krea.backend!=='studio')throw new Error('モデル選択には Krea Studio 接続が必要です');
+        send(200,await service.studios.request('krea','/api/models'));return;
+      }
       if(req.method==='GET' && action.startsWith('images/')) {
         if(!p.pages.some(page=>page.panels.some(panel=>panel.image===action))) {send(404,{error:'現在の作品に属する画像ではありません'});return;}
         res.setHeader('Content-Type','image/png');res.end(await service.readImage(id,action));return;

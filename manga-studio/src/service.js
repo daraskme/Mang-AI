@@ -51,7 +51,7 @@ export class MangaService {
       for(const page of p.pages) page.letteringNeedsReview=false;
     });
   }
-  async render(session,{pageId,regenerate=false,seed=0}) {
+  async render(session,{pageId,regenerate=false,seed=0,model_id,preset,loras}) {
     if(this.closed) throw new Error('Studio は終了中です');
     const p=this.store.get(sessionKey(session)), page=getPage(p,pageId);
     if(p.approved!==scriptDigest(p)) throw new Error('編集画面で脚本を確認し「脚本を確定」を押してください');
@@ -60,12 +60,17 @@ export class MangaService {
     const panels=page.panels.filter(panel=>regenerate || !panel.image);
     if(!panels.length) throw new Error('全コマの画像があります。再生成する場合だけ regenerate=true を指定してください');
     const k=this.config.krea;
+    if(model_id!==undefined && (typeof model_id!=='string'||!model_id.trim()))throw new Error('model_id が不正です');
+    if(preset!==undefined && !['turbo8','fast4','raw'].includes(preset))throw new Error('preset が不正です');
+    if(loras!==undefined && (!Array.isArray(loras)||loras.some(l=>!l||typeof l.id!=='string'||(l.weight!==undefined&&(!Number.isFinite(l.weight)||Math.abs(l.weight)>4)))))throw new Error('loras が不正です');
+    if(k.backend!=='studio' && [model_id,preset,loras].some(v=>v!==undefined))throw new Error('モデル・LoRAの個別指定には Krea Studio 接続が必要です');
+    const generation=structuredClone({model_id:model_id??k.model,preset:preset??k.preset??'turbo8',loras:loras??k.loras??[]});
     if(k.backend==='studio')await this.studios.request('krea','/health');
     else {
       if(!k.weights) throw new Error(`${k.checkpoint==='oss_raw'?'OSS_RAW':'OSS_TURBO'} または krea.weights に重みのパスを設定してください`);
       await Promise.all([access(join(k.repo,'inference.py')),access(k.python),access(k.weights)]);
     }
-    const job={id:randomUUID(),project:p.id,pageId,status:'queued',createdAt:new Date().toISOString(),digest:scriptDigest(p),panels:panels.map(x=>x.id),completed:[],seed,error:null};
+    const job={id:randomUUID(),project:p.id,pageId,status:'queued',createdAt:new Date().toISOString(),digest:scriptDigest(p),panels:panels.map(x=>x.id),completed:[],seed,generation,error:null};
     this.store.saveJob(job);
     const controller=new AbortController();
     this.live.set(job.id,controller);
@@ -95,7 +100,7 @@ export class MangaService {
     try {
       if(k.backend==='studio') {
         for(const req of requests) {
-          await this.studios.renderKrea(req,signal,remoteId=>{job.remoteId=remoteId;this.store.saveJob(job);});
+          await this.studios.renderKrea({...req,...job.generation},signal,remoteId=>{job.remoteId=remoteId;this.store.saveJob(job);});
           job.completed.push(req.id);this.store.saveJob(job);
         }
       } else {

@@ -16,4 +16,4 @@
 *.yaml text eol=lf
 
 # Runtime patches have SHA256 receipts; preserve their exact bytes.
-*.patch -text
+*.patch -text -whitespace

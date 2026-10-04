@@ -18,6 +18,8 @@ await writeFile(join(repo,'sampling.py'),`import base64\nfrom pathlib import Pat
 await writeFile(join(repo,'weights'),'fixture');
 let step=0,gemmaCalls=0,results=[],serverError,editAsset,editJob;
 const testEditing=process.env.TEST_EDITING==='1';
+const testService=process.env.TEST_SERVICE==='1';
+assert(!(testEditing&&testService),'Run the editing and service smoke tests separately');
 function unpack(message){if(!message)return null;try{return JSON.parse(typeof message.content==='string'?message.content:message.content.map(b=>b.text||'').join(''));}catch{return null;}}
 const server=createServer(async(req,res)=>{
   try{
@@ -59,6 +61,9 @@ const server=createServer(async(req,res)=>{
       else{assert(['running','queued'].includes(value.job.status),JSON.stringify(value));step--;await new Promise(resolve=>setTimeout(resolve,100));call=['media_edit_status',{assetId:editAsset,jobId:editJob}];}
     }
     else if(testEditing&&step===11)assert(value?.outputPath,JSON.stringify(last));
+    else if(testService&&step===7)call=['media_service',{provider:'krea',action:'start'}];
+    else if(testService&&step===8){assert.equal(value?.action,'start',JSON.stringify(last));call=['media_service',{provider:'krea',action:'stop'}];}
+    else if(testService&&step===9)assert.equal(value?.action,'stop',JSON.stringify(last));
     res.setHeader('Content-Type','text/event-stream');
     const content=call?{role:'assistant',tool_calls:[{index:0,id:`call_${step}_${results.length}`,type:'function',function:{name:call[0],arguments:JSON.stringify(call[1])}}]}:{role:'assistant',content:'DSH_MANGA_SMOKE_OK'};
     const envelope={id:'test',object:'chat.completion.chunk',created:1,model:'fake-qwen'};
@@ -89,4 +94,5 @@ try{
   await writeFile(join(packageRoot,'.test-output/dsh-smoke.jsonl'),stdout);
   console.log('PASS DSH integration: Qwen tool calls → Gemma script → lettering tool → editor approval → managed Krea Python → exported SVG/HTML');
   if(testEditing)console.log('PASS real DSH media_open_editor → managed mosaic Python → status → comic commit');
+  if(testService)console.log('PASS real DSH managed Krea service start and stop (no model load)');
 }finally{clearTimeout(timer);if(child.exitCode===null)child.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true});}

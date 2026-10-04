@@ -9,7 +9,7 @@ index 869abd6..69e546f 100644
 +comfy-kitchen==0.2.37
  Pillow==12.3.0
 diff --git a/src/krea2_studio/discovery.py b/src/krea2_studio/discovery.py
-index 4964ff2..f90136d 100644
+index 4964ff2..9d8deaa 100644
 --- a/src/krea2_studio/discovery.py
 +++ b/src/krea2_studio/discovery.py
 @@ -14,7 +14,7 @@ def discover_models(config: dict[str, Any]) -> dict[str, Any]:
@@ -21,10 +21,15 @@ index 4964ff2..f90136d 100644
              raise ValueError(f"Unsupported model kind for {model_id}: {kind}")
          if family not in {"turbo", "raw"}:
              raise ValueError(f"Model {model_id} must declare family='turbo' or family='raw'")
-@@ -22,6 +22,12 @@ def discover_models(config: dict[str, Any]) -> dict[str, Any]:
+@@ -22,11 +22,22 @@ def discover_models(config: dict[str, Any]) -> dict[str, Any]:
          supported = kind != "unsupported_quantized"
          item = _model(model_id, str(spec.get("name", model_id)), str(spec.get("path", "")), kind, supported, spec.get("reason"))
          item.update({"family": family, "distilled": bool(spec.get("distilled", family == "turbo"))})
++        item["supported_presets"] = list(spec.get("supported_presets", ["raw"] if family == "raw" else ["turbo8", "fast4"]))
++        if kind in {"single_file_int8", "single_file_bf16"} and spec.get("components"):
++            components = Path(spec["components"])
++            if not all((components / part).exists() for part in ("model_index.json", "text_encoder", "tokenizer", "vae", "scheduler")):
++                item.update(available=False, reason='Diffusers text encoder / VAE components are missing')
 +        if kind == 'single_file_int8':
 +            import importlib.util
 +            if importlib.util.find_spec('comfy_kitchen') is None:
@@ -34,16 +39,22 @@ index 4964ff2..f90136d 100644
          entries.append(item)
      default_id = config["engine"]["default_model"]
      for item in entries:
+         item["is_default"] = item["id"] == default_id
+-        if item["available"] and item["kind"] == "single_file_bf16":
++        if item["available"] and item["kind"] == "single_file_bf16" and not get_model_spec(config, item["id"]).get("components"):
+             for dependency in (paths["text_encoder"], paths["vae"]):
+                 if not Path(dependency).is_file():
+                     item["available"] = False
 diff --git a/src/krea2_studio/engine.py b/src/krea2_studio/engine.py
-index b12191f..486cf27 100644
+index b12191f..df82d0c 100644
 --- a/src/krea2_studio/engine.py
 +++ b/src/krea2_studio/engine.py
 @@ -72,6 +72,13 @@ class KreaEngine:
              self.pipe = Krea2Pipeline.from_pretrained(
                  spec["path"], torch_dtype=torch.bfloat16, local_files_only=True,
              ).to("cuda")
-+        elif spec["kind"] == "single_file_int8":
-+            transformer = load_transformer(Path(spec["path"]), "cuda", quantized=True)
++        elif spec["kind"] == "single_file_int8" or spec.get("components"):
++            transformer = load_transformer(Path(spec["path"]), "cuda", quantized=spec["kind"] == "single_file_int8")
 +            self.pipe = Krea2Pipeline.from_pretrained(
 +                spec["components"], transformer=transformer,
 +                torch_dtype=torch.bfloat16, local_files_only=True,
@@ -52,7 +63,35 @@ index b12191f..486cf27 100644
          else:
              paths = self.config["paths"]
              transformer = load_transformer(Path(spec["path"]), "cuda")
-@@ -595,6 +602,7 @@ class KreaEngine:
+@@ -188,6 +195,8 @@ class KreaEngine:
+         preset = str(request.get("preset", "turbo8"))
+         if preset not in {"turbo8", "fast4", "raw"}:
+             raise ValueError(f"Unknown preset: {preset}")
++        if preset not in spec.get("supported_presets", ["turbo8", "fast4", "raw"]):
++            raise ValueError(f"Model {model_id} does not support preset {preset}")
+         expected_family = "raw" if preset == "raw" else "turbo"
+         if spec["family"] != expected_family:
+             raise ValueError(f"The {preset} preset requires a registered {expected_family} model")
+@@ -533,6 +542,8 @@ class KreaEngine:
+         preset = str(request.get("preset", "turbo8"))
+         if preset not in {"turbo8", "fast4", "raw"}:
+             raise ValueError(f"Unknown preset: {preset}")
++        if preset not in spec.get("supported_presets", ["turbo8", "fast4", "raw"]):
++            raise ValueError(f"Model {model_id} does not support preset {preset}")
+         if preset == "raw" and spec["family"] != "raw":
+             raise ValueError("The raw preset requires a registered raw model")
+         if preset in {"turbo8", "fast4"} and spec["family"] != "turbo":
+@@ -584,6 +595,9 @@ class KreaEngine:
+             "transformer": spec["path"], "text_encoder": self.config["paths"]["text_encoder"],
+             "vae": self.config["paths"]["vae"],
+         }
++        if spec.get("components"):
++            components.update(text_encoder=str(Path(spec["components"]) / "text_encoder"),
++                              vae=str(Path(spec["components"]) / "vae"))
+         return {
+             "schema": "krea2-studio/v1", "created_at": datetime.now(timezone.utc).isoformat(),
+             "prompt": request["prompt"], "negative_prompt": request["negative_prompt"], "seed": request["seed"],
+@@ -595,6 +609,7 @@ class KreaEngine:
              "final_width": passes[-1].get("width", request["width"]),
              "final_height": passes[-1].get("height", request["height"]),
              "attention_backend": self.attention_backend,
@@ -140,6 +179,69 @@ index 616e864..a2bbbc6 100644
      return model
  
  
+diff --git a/tests/test_core.py b/tests/test_core.py
+index 31306cd..11768a6 100644
+--- a/tests/test_core.py
++++ b/tests/test_core.py
+@@ -17,6 +17,39 @@ from krea2_studio.metadata import EXIF_USER_COMMENT, decode_user_comment, read_i
+ 
+ 
+ class ConfigTests(unittest.TestCase):
++    def test_bf16_checkpoint_reuses_diffusers_components_and_restricts_presets(self):
++        from krea2_studio.config import DEFAULT_CONFIG
++        from krea2_studio.discovery import discover_models
++        from krea2_studio.engine import KreaEngine
++        import copy
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            checkpoint = root / "kroma.safetensors"
++            checkpoint.touch()
++            components = root / "components"
++            components.mkdir()
++            for name in ("text_encoder", "vae", "tokenizer", "scheduler"):
++                (components / name).mkdir()
++            (components / "model_index.json").write_text("{}")
++            config = copy.deepcopy(DEFAULT_CONFIG)
++            config["models"] = [{"id": "kroma", "kind": "single_file_bf16", "family": "turbo",
++                                 "path": str(checkpoint), "components": str(components),
++                                 "distilled": True, "supported_presets": ["turbo8"]}]
++            config["paths"]["text_encoder"] = str(root / "missing-te")
++            config["paths"]["vae"] = str(root / "missing-vae")
++            model = discover_models(config)["items"][0]
++            self.assertTrue(model["available"])
++            self.assertEqual(model["supported_presets"], ["turbo8"])
++            engine = KreaEngine(config)
++            request = {"model_id": "kroma", "prompt": "A teapot", "preset": "turbo8"}
++            self.assertEqual(engine._resolve_request(request)["steps"], 8)
++            self.assertEqual(engine._resolve_control_request(request)["preset"], "turbo8")
++            for resolver in (engine._resolve_request, engine._resolve_control_request):
++                with self.assertRaisesRegex(ValueError, "does not support preset"):
++                    resolver({**request, "preset": "fast4"})
++            (components / "vae").rmdir()
++            self.assertFalse(discover_models(config)["items"][0]["available"])
++
+     def test_dimensions_and_path_escape(self):
+         self.assertEqual(validate_settings({"width": 512, "height": 768})["height"], 768)
+         with self.assertRaises(ValueError):
+diff --git a/web/app.js b/web/app.js
+index 63d18b9..23df142 100644
+--- a/web/app.js
++++ b/web/app.js
+@@ -351,11 +351,11 @@
+     [...modelSelect.options].forEach((node) => {
+       const model = state.models.find((item) => item.id === node.value);
+       if (!model) return;
+-      node.disabled = !model.available || modelFamily(model) !== family;
++      node.disabled = !model.available || modelFamily(model) !== family || (model.supported_presets && !model.supported_presets.includes(preset));
+     });
+     const selected = state.models.find((model) => model.id === modelSelect.value);
+-    if (!selected || !selected.available || modelFamily(selected) !== family) {
+-      const compatible = state.models.find((model) => model.available && modelFamily(model) === family);
++    if (!selected || !selected.available || modelFamily(selected) !== family || (selected.supported_presets && !selected.supported_presets.includes(preset))) {
++      const compatible = state.models.find((model) => model.available && modelFamily(model) === family && (!model.supported_presets || model.supported_presets.includes(preset)));
+       modelSelect.value = compatible?.id || "";
+     }
+     const current = state.models.find((model) => model.id === modelSelect.value);
 diff --git a/src/krea2_studio/quantized.py b/src/krea2_studio/quantized.py
 new file mode 100644
 index 0000000..37f94de

@@ -21,6 +21,11 @@ const galleryUrl=await galleryLink.getAttribute('href'),galleryHash=new URLSearc
 const catalog=await fetch(`${new URL(galleryUrl).origin}/api/${galleryHash.get('project')}/gallery/collections`,{headers:{Authorization:`Bearer ${galleryHash.get('token')}`}}).then(r=>{assert.equal(r.status,200);return r.json();});
 console.log('Gallery',JSON.stringify({datasets:catalog.items.filter(c=>c.group==='datasets').length,missing:catalog.items.filter(c=>c.missing).map(c=>({name:c.title,links:c.missing})),projects:catalog.items.filter(c=>c.group==='projects').length}));
 if(process.env.TEST_DATASETS==='48')assert.equal(catalog.items.filter(c=>c.group==='datasets').length,48);
+if(process.env.TEST_THUMBNAIL==='1'){
+  const base=`${new URL(galleryUrl).origin}/api/${galleryHash.get('project')}/gallery/`,headers={Authorization:`Bearer ${galleryHash.get('token')}`};
+  const listing=await fetch(base+'items?collection=krea&query=krea2_091343_859094_42_136abe.png',{headers}).then(r=>r.json());assert.equal(listing.total,1);
+  const response=await fetch(base+'thumb/'+listing.items[0].id,{headers});assert.equal(response.status,200,await response.clone().text());assert.equal(response.headers.get('content-type'),'image/jpeg');assert((await response.arrayBuffer()).byteLength>1000);console.log('PASS DSH-managed gallery thumbnail');
+}
 await p.getByRole('button',{name:/^(Plugins|プラグイン)$/}).click();await p.waitForTimeout(1200);
 console.log((await p.locator('body').innerText()).slice(0,6500));
 console.log('Context',await p.evaluate(()=>{const c=window.__testCtx;return c?{remote:Object.keys(c.get('remote')),locale:c.locale.snapshot}:null}));

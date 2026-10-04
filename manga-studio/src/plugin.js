@@ -67,6 +67,8 @@ export async function apply(ctx, options) {
   });
   register('manga_render','確定済みの1ページをローカル Krea 2 公式 Python で作画する。GPUキューへ入れ、すぐジョブIDを返す。既存画像は既定で再生成しない。',{
     pageId:string('p1 など'),seed:number('0〜2147483647',false),regenerate:{type:'boolean',description:'明示的な再作画時だけ true'},
+    model_id:string('media_status の KreaモデルID。Kroma は kroma-v03-turbo',false),preset:{type:'string',enum:['turbo8','fast4','raw'],description:'Kromaはturbo8を指定'},
+    loras:{type:'array',description:'追加するLoRA。省略時は既定、空配列でなし',items:{type:'object',additionalProperties:false,properties:{id:string('LoRA ID'),weight:number('通常0〜1',false),enabled:{type:'boolean'}}}},
   },async(args,exec)=>({job:await service.render(exec.agent.id,args)}));
   register('manga_history','このセッションの保存履歴を新しい順に最大100件表示する。',{},(_args,exec)=>({revisions:service.store.history(sessionKey(exec.agent.id))}));
   register('manga_restore','利用者が指定した保存版を、このセッションの新しい版として復元する。現在の版も履歴に残る。',{
