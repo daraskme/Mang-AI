@@ -1,0 +1,5 @@
+- insert:
+    - id: manga-studio
+      name: dsh-manga-studio
+      config:
+        configFile: !!js process.env.MANGA_STUDIO_CONFIG

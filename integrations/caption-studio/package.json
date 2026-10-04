@@ -1,0 +1,9 @@
+{
+  "name": "krea-caption-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Gemma vision caption workspace for Krea 2 LoRA datasets",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node server.mjs", "test": "node --test tests/*.test.mjs" }
+}

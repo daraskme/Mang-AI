@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>メディアギャラリー · Mang-AI</title><link rel="stylesheet" href="/gallery.css"></head>
+<body>
+<header><div class="brand">M<span>✦</span>NG-AI <small>メディアギャラリー</small></div><button id="refresh">一覧を更新</button></header>
+<div class="workspace">
+  <aside><h1>ライブラリ</h1><p class="muted">制作途中のページも、学習素材も。</p>
+    <nav id="groups" aria-label="メディアの種類">
+      <button data-group="projects" aria-pressed="true">制作中の漫画 <span></span></button>
+      <button data-group="sessions" aria-pressed="false">セッションのメディア <span></span></button>
+      <button data-group="datasets" aria-pressed="false">データセット <span></span></button>
+      <button data-group="outputs" aria-pressed="false">生成環境の履歴 <span></span></button>
+    </nav>
+    <label for="collection-search">作品・フォルダを探す</label><input id="collection-search" type="search" placeholder="名前で絞り込み">
+    <div id="collections" aria-label="作品・フォルダ一覧"></div>
+  </aside>
+  <main><div class="heading"><div><p class="eyebrow" id="group-name">制作中の漫画</p><h2 id="title">作品を選んでください</h2><p id="summary" class="muted"></p></div><form id="search-form"><label class="sr-only" for="search">ファイル名で検索</label><input id="search" type="search" placeholder="ファイル名で検索"><button>検索</button></form></div>
+    <p id="status" role="status" aria-live="polite"></p><p id="missing" class="notice" hidden></p>
+    <div id="grid" class="grid" aria-label="メディア一覧"></div><p id="empty" class="empty">左の一覧から選択してください。</p><button id="more" hidden>続きを表示</button>
+  </main>
+</div>
+<dialog id="preview" aria-labelledby="preview-title"><div class="preview-head"><h2 id="preview-title"></h2><button id="close" aria-label="プレビューを閉じる">閉じる ✕</button></div><div class="preview-layout"><div id="viewer"></div><section class="details"><p id="metadata" class="muted"></p><h3>キャプション・ページの内容</h3><p id="caption"></p><details><summary>保存場所</summary><p id="path"></p></details><div class="actions"><a id="original" target="_blank" rel="noreferrer">元サイズで開く ↗</a><button id="edit">編集を開く</button></div><p id="edit-status" role="status"></p></section></div><div class="preview-foot"><button id="previous">← 前へ</button><span id="position"></span><button id="next">次へ →</button></div></dialog>
+<script type="module" src="/gallery.js"></script></body></html>

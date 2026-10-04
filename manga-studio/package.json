@@ -1,0 +1,43 @@
+{
+  "name": "dsh-manga-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/plugin.js",
+  "exports": {
+    ".": "./src/plugin.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "start": "node scripts/launch.mjs",
+    "configure": "node scripts/configure.mjs",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser.mjs",
+    "test:dsh": "node tests/dsh-smoke.mjs",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "dependencies": {
+    "@mang-ai/local-runtime": "file:plugins/local-runtime",
+    "fast-xml-parser": "5.5.6",
+    "acorn": "8.16.0",
+    "@deepseek-ai/schemastery": "3.18.5-alpha.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.1-alpha.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.1",
+    "@deepseek-ai/dsh": "0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.1-alpha.1",
+    "@playwright/test": "1.58.2",
+    "node": "24.13.0"
+  }
+}

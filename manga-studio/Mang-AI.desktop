@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Mang-AI
+GenericName=漫画・画像・動画・LoRA エージェント
+Comment=DeepSeek Harness とローカル制作ツールを起動
+Exec=/mnt/solidigm-b/Mang-AI/manga-studio/node_modules/node/bin/node /mnt/solidigm-b/Mang-AI/manga-studio/scripts/launch.mjs
+Path=/mnt/solidigm-b/Mang-AI
+Icon=/mnt/solidigm-b/Mang-AI/manga-studio/public/mang-ai.svg
+Terminal=true
+StartupNotify=true
+Categories=Graphics;Development;

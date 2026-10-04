@@ -1,0 +1,174 @@
+diff --git a/requirements-nixos.txt b/requirements-nixos.txt
+index 869abd6..69e546f 100644
+--- a/requirements-nixos.txt
++++ b/requirements-nixos.txt
+@@ -8,4 +8,5 @@ safetensors==0.8.0
+ spandrel==0.4.2
+ peft==0.21.0
+ aiohttp==3.14.3
++comfy-kitchen==0.2.37
+ Pillow==12.3.0
+diff --git a/src/krea2_studio/discovery.py b/src/krea2_studio/discovery.py
+index 4964ff2..f90136d 100644
+--- a/src/krea2_studio/discovery.py
++++ b/src/krea2_studio/discovery.py
+@@ -14,7 +14,7 @@ def discover_models(config: dict[str, Any]) -> dict[str, Any]:
+         family = str(spec.get("family", ""))
+         if not model_id or model_id in seen:
+             raise ValueError(f"Model IDs must be non-empty and unique: {model_id!r}")
+-        if kind not in {"single_file_bf16", "diffusers", "unsupported_quantized"}:
++        if kind not in {"single_file_bf16", "single_file_int8", "diffusers", "unsupported_quantized"}:
+             raise ValueError(f"Unsupported model kind for {model_id}: {kind}")
+         if family not in {"turbo", "raw"}:
+             raise ValueError(f"Model {model_id} must declare family='turbo' or family='raw'")
+@@ -22,6 +22,12 @@ def discover_models(config: dict[str, Any]) -> dict[str, Any]:
+         supported = kind != "unsupported_quantized"
+         item = _model(model_id, str(spec.get("name", model_id)), str(spec.get("path", "")), kind, supported, spec.get("reason"))
+         item.update({"family": family, "distilled": bool(spec.get("distilled", family == "turbo"))})
++        if kind == 'single_file_int8':
++            import importlib.util
++            if importlib.util.find_spec('comfy_kitchen') is None:
++                item.update(available=False, reason='comfy-kitchen INT8 kernels are not installed')
++            if not Path(spec.get('components', '')).is_dir():
++                item.update(available=False, reason='Diffusers text encoder / VAE components are missing')
+         entries.append(item)
+     default_id = config["engine"]["default_model"]
+     for item in entries:
+diff --git a/src/krea2_studio/engine.py b/src/krea2_studio/engine.py
+index b12191f..486cf27 100644
+--- a/src/krea2_studio/engine.py
++++ b/src/krea2_studio/engine.py
+@@ -72,6 +72,13 @@ class KreaEngine:
+             self.pipe = Krea2Pipeline.from_pretrained(
+                 spec["path"], torch_dtype=torch.bfloat16, local_files_only=True,
+             ).to("cuda")
++        elif spec["kind"] == "single_file_int8":
++            transformer = load_transformer(Path(spec["path"]), "cuda", quantized=True)
++            self.pipe = Krea2Pipeline.from_pretrained(
++                spec["components"], transformer=transformer,
++                torch_dtype=torch.bfloat16, local_files_only=True,
++                is_distilled=bool(spec["distilled"]),
++            ).to("cuda")
+         else:
+             paths = self.config["paths"]
+             transformer = load_transformer(Path(spec["path"]), "cuda")
+@@ -595,6 +602,7 @@ class KreaEngine:
+             "final_width": passes[-1].get("width", request["width"]),
+             "final_height": passes[-1].get("height", request["height"]),
+             "attention_backend": self.attention_backend,
++            "quantization": getattr(self.pipe.transformer, "mang_ai_quantization", {"format": "bf16"}),
+             "attention_reason": self.attention_reason,
+             "attention_fallback_count": getattr(self._attention_processor, "fallback_count", 0),
+             "elapsed_seconds": round(elapsed, 3),
+diff --git a/src/krea2_studio/loaders.py b/src/krea2_studio/loaders.py
+index 616e864..a2bbbc6 100644
+--- a/src/krea2_studio/loaders.py
++++ b/src/krea2_studio/loaders.py
+@@ -1,6 +1,7 @@
+ from __future__ import annotations
+ 
+ from collections import OrderedDict
++import json
+ from pathlib import Path
+ import re
+ from typing import Any, Iterable
+@@ -62,7 +63,7 @@ def transformer_source_key(target_key: str) -> str | None:
+     return None
+ 
+ 
+-def load_transformer(path: Path, device: str = "cuda"):
++def load_transformer(path: Path, device: str = "cuda", *, quantized: bool = False):
+     """Stream the 26 GB BF16 checkpoint into a meta-initialized Diffusers model."""
+     import torch
+     from accelerate import init_empty_weights
+@@ -75,15 +76,49 @@ def load_transformer(path: Path, device: str = "cuda"):
+     expected = model.state_dict()
+     missing: list[str] = []
+     used: set[str] = set()
++    quantized_modules: set[str] = set()
+     with safe_open(str(path), framework="pt", device="cpu") as checkpoint:
+         available = set(checkpoint.keys())
++        metadata = json.loads((checkpoint.metadata() or {}).get("_quantization_metadata", "{}"))
++        layers = metadata.get("layers", {})
+         for target, meta_tensor in expected.items():
+-            source = transformer_source_key(target)
++            module_name = target.rsplit('.', 1)[0]
++            if module_name in quantized_modules:
++                continue
++            mapped = transformer_source_key(target)
++            source = next((key for key in (mapped, f"model.diffusion_model.{mapped}", f"diffusion_model.{mapped}", target) if key in available), None)
+             if source is None or source not in available:
+                 missing.append(target)
+                 continue
+             tensor = checkpoint.get_tensor(source)
+             used.add(source)
++            if tensor.dtype == torch.int8:
++                if not quantized or not source.endswith('.weight'):
++                    raise ValueError(f"INT8 checkpoint requires the ConvRot loader: {source}")
++                from .quantized import ConvRotInt8Linear
++                prefix = source[:-7]
++                quant_key, scale_key = prefix + '.comfy_quant', prefix + '.weight_scale'
++                recipe = layers.get(prefix, {})
++                if quant_key in available:
++                    recipe = json.loads(bytes(checkpoint.get_tensor(quant_key).tolist()))
++                    used.add(quant_key)
++                if recipe.get('format') != 'int8_tensorwise' or scale_key not in available:
++                    raise ValueError(f"Unsupported INT8 format/scales: {source}")
++                if tuple(tensor.shape) != tuple(meta_tensor.shape):
++                    raise ValueError(f"Quantized shape mismatch: {source}")
++                scale = checkpoint.get_tensor(scale_key).to(device)
++                used.add(scale_key)
++                bias_key = prefix + '.bias'
++                bias = checkpoint.get_tensor(bias_key).to(device=device, dtype=torch.bfloat16) if bias_key in available else None
++                if bias is not None:
++                    used.add(bias_key)
++                params = recipe.get('params', {})
++                layer = ConvRotInt8Linear(tensor.to(device), scale, bias,
++                    convrot=recipe.get('convrot', params.get('convrot', False)),
++                    group_size=int(recipe.get('convrot_groupsize', params.get('convrot_groupsize', 256))))
++                model.set_submodule(module_name, layer)
++                quantized_modules.add(module_name)
++                continue
+             if target.endswith("scale_shift_table") and tensor.ndim == 1:
+                 tensor = tensor.reshape(meta_tensor.shape)
+             if tuple(tensor.shape) != tuple(meta_tensor.shape):
+@@ -99,6 +134,7 @@ def load_transformer(path: Path, device: str = "cuda"):
+     if residual:
+         raise ValueError(f"Transformer still contains meta tensors: {residual[:8]}")
+     model.eval()
++    model.mang_ai_quantization = {"format": "int8-convrot" if quantized_modules else "bf16", "linear_count": len(quantized_modules)}
+     return model
+ 
+ 
+diff --git a/src/krea2_studio/quantized.py b/src/krea2_studio/quantized.py
+new file mode 100644
+index 0000000..37f94de
+--- /dev/null
++++ b/src/krea2_studio/quantized.py
+@@ -0,0 +1,26 @@
++"""Standalone INT8 ConvRot layers using comfy-kitchen kernels (no ComfyUI runtime)."""
++from __future__ import annotations
++
++import torch
++from torch import nn
++
++
++class ConvRotInt8Linear(nn.Linear):
++    def __init__(self, weight, scale, bias=None, *, convrot=True, group_size=256):
++        # Preserve nn.Linear identity for PEFT. Its LoRA branch uses the original,
++        # unrotated input; only this base layer applies the checkpoint's rotation.
++        super().__init__(weight.shape[1], weight.shape[0], bias=False, device="meta")
++        if weight.dtype != torch.int8 or scale.numel() not in (1, weight.shape[0]):
++            raise ValueError("Expected INT8 weights and tensorwise or per-row scales")
++        if convrot and (group_size not in (4, 16, 64, 256, 1024) or weight.shape[1] % group_size):
++            raise ValueError("Invalid ConvRot group size")
++        self.weight = nn.Parameter(weight.contiguous(), requires_grad=False)
++        self.bias = nn.Parameter(bias, requires_grad=False) if bias is not None else None
++        self.register_buffer("weight_scale", scale.float().contiguous())
++        self.convrot = convrot
++        self.group_size = group_size
++
++    def forward(self, x):
++        import comfy_kitchen as ck
++        return ck.int8_linear(x, self.weight, self.weight_scale, self.bias, x.dtype,
++                              convrot=self.convrot, convrot_groupsize=self.group_size)

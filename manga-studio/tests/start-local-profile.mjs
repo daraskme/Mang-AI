@@ -1,0 +1,14 @@
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {resolve} from 'node:path';
+import {configure} from '../scripts/configure.mjs';
+import {packageRoot} from '../src/config.js';
+const root=resolve(packageRoot,'.test-output/local-profile');await mkdir(root,{recursive:true});
+const config=JSON.parse(await readFile(resolve(packageRoot,'studio.config.json'),'utf8'));
+config.dataDir=resolve(root,'data');config.editorPort=0;
+process.env.MANGA_STUDIO_CONFIG=resolve(root,'config.json');process.env.DSH_HOME=resolve(root,'dsh');
+await writeFile(process.env.MANGA_STUDIO_CONFIG,JSON.stringify(config));
+const {patchPath}=await configure({patchPath:resolve(root,'patch.yml')});
+const child=spawn(process.execPath,[resolve(packageRoot,'node_modules/@deepseek-ai/dsh/lib/bin.js'),'--profile','manga','--patch',patchPath,'--port','4340','--no-open'],{cwd:resolve(packageRoot,'..'),env:{...process.env,MANGA_QWEN_API_KEY:'local'},stdio:'inherit'});
+for(const event of ['SIGINT','SIGTERM'])process.on(event,()=>child.kill(event));
+child.on('exit',code=>{process.exitCode=code??1;});

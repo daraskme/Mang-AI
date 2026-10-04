@@ -1,0 +1,19 @@
+* text=auto
+
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+# WSL／Linux／macOSで実行するファイルは、WindowsのGit設定にかかわらずLFを保つ。
+*.sh text eol=lf
+*.py text eol=lf
+*.txt text eol=lf
+*.tsv text eol=lf
+
+# 設定・Skill・ガイドラインは配布zip内でも同じ改行へ固定する。
+*.md text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+
+# Runtime patches have SHA256 receipts; preserve their exact bytes.
+*.patch -text

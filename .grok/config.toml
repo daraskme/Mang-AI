@@ -1,0 +1,33 @@
+# novel-Standard — Grok プロジェクト設定
+#
+# プロジェクト .grok/config.toml から読み込まれるのは主に
+# [mcp_servers] / [plugins] / [permission]（その他は ~/.grok/config.toml）。
+# AGENTS.md と .agents/skills/ は Grok が自動発見する。
+#
+# 推奨起動例:
+#   grok --sandbox workspace
+#
+# 投稿サイトや市場動向を扱う相談 Skill では web_search を使う（Grok 標準ツール）。
+
+[permission]
+# 検査・状態確認は執筆フローの必須手順のため、毎回の承認待ちを避ける。
+allow = [
+  "Bash(bash scripts/check.sh *)",
+  "Bash(bash scripts/chars.sh *)",
+  "Bash(bash scripts/init-work.sh)",
+  "Bash(bash scripts/eval.sh)",
+  "Bash(python3 scripts/normalize_blanklines.py *)",
+  "Bash(python3 scripts/repeat_check.py *)",
+  "Bash(python3 scripts/vocab_check.py *)",
+  "Bash(python3 scripts/cliche_check.py *)",
+  "Bash(python3 scripts/combat_terms_check.py *)",
+  "Bash(python3 scripts/state_check.py *)",
+  "Bash(python3 scripts/audit-repo.py*)",
+  "Bash(python3 scripts/nai_generate.py --dry-run *)",
+  "Bash(python3 scripts/metaphor_sweep.py *)",
+  "Bash(python3 .agents/skills/validate-episode/scripts/dialogue_context.py *)",
+]
+# 破壊的操作は明示確認を残す。
+deny = [
+  "Bash(rm -rf *)",
+]

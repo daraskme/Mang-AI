@@ -1,0 +1,282 @@
+# Mang-AI — DSH ローカル漫画制作
+
+DeepSeek Harness を漫画制作向けに拡張するプラグインです。DSH の1セッションを1作品に対応させ、脚本、コマ画像、吹き出し、日本語文字、編集履歴を保存します。
+
+| 担当 | 使用するもの |
+|---|---|
+| 日本語脚本・台詞 | Gemma Ortenzya 31B のローカル OpenAI 互換 API |
+| コーディング・制作進行・ツール操作 | Qwen/Qwen3.8-27B のローカル OpenAI 互換 API と DSH |
+| 文字なしのコマ絵・単画像 | 既存 Krea 2 Studio の公式 Diffusers Python 推論。既定は Turbo |
+| 動画・音声 | 既存 MiniMax H3 Studio |
+| 自然言語キャプション | Caption Studio の画像認識 Gemma |
+| Krea 2 LoRA 学習 | Caption Studio / Musubi Tuner、RAW DiT |
+| 吹き出し・文字入力 | `manga_letter` 専用ツールとブラウザ編集画面 |
+| 画像の消去・補完 | daraskme/IOpaint の LaMa と共通編集GUI |
+| 画像・動画のモザイク | daraskme/mosaic_editor の検出・SAM2追跡・マスク処理と共通編集GUI |
+
+Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の絵を生成し、ページのコマ割りと台詞は SVG として合成します。文字修正に再作画は不要です。Kreaは公式Python推論、H3単発は既存Python環境、H3長尺はローカルComfyUI上のH3-LongVideosを使います。
+
+## 現在の状態と起動
+
+アプリ、依存関係、Krea 2・H3・キャプション・LoRA 学習環境を `/mnt/solidigm-b/Mang-AI/` に配置しています。エージェントは既存のQwen3.8 27B TWIN-TURBO Fable Cold Fusion Q8、日本語創作はOrtenzya 31B Q8、キャプションはUNSEEN Gemma 4 26B Q4と画像プロジェクターです。Qwenと創作用Gemmaは専用llama.cppルーターの `127.0.0.1:1234` に接続済みです。
+
+```bash
+cd /mnt/solidigm-b/Mang-AI/manga-studio
+npm start
+```
+
+KDEタスクバーに登録した緑の吹き出し「Mang-AI」、アプリ一覧の「Mang-AI」、またはこのフォルダの `Mang-AI.desktop` でも起動できます。
+
+DSH は空きポートで起動し、URL を表示します。自動でブラウザを開かない場合は `npm start -- --no-open`。ポート固定は `npm start -- --port 3082`。吹き出し編集サーバーは既定で `127.0.0.1:4317`。このサーバーは DSH プラグインの起動・終了に従います。
+
+他の DSH プロファイルを変更せず、このフォルダの `.dsh/` にプロファイルと会話を保存します。再起動は同じプロファイルを使います。フォルダ移動後は `npm run configure` または `npm start` が絶対パスを作り直します。
+
+再インストールは `npm ci`。検証用に公式 Node 24.13.0 をプロジェクト内へ固定しています。NixOS では導入後、シェルから `node scripts/prepare-nixos.mjs` を実行してください。`/nix/store` の glibc / libstdc++ / patchelf を使って、プロジェクト内の Node だけを調整します。現在の環境では調整済みです。
+
+## モデル接続
+
+[studio.config.example.json](studio.config.example.json) を元に作成された `studio.config.json` を編集します。相対パスは設定ファイルの場所を基準にします。設定変更後は DSH を再起動してください。
+
+### Gemma / Qwen
+
+LM Studio や llama.cpp などで各モデルを OpenAI Chat Completions 互換 API として起動し、`gemma.baseURL` / `gemma.model` と `qwen.baseURL` / `qwen.model` を実際の値にします。既定 URL は `http://127.0.0.1:1234/v1`。model には **`GET /v1/models` が返す id** を設定してください。Hugging Face のリポジトリ名と一致するとは限りません。同じサーバーでもモデル ID で振り分けます。別ポートでも構いません。
+
+環境変数 `MANGA_GEMMA_URL`、`MANGA_GEMMA_MODEL`、`MANGA_QWEN_URL`、`MANGA_QWEN_MODEL` でも上書きできます。認証がある場合だけ `MANGA_GEMMA_API_KEY` / `MANGA_QWEN_API_KEY` を環境変数で渡してください。Qwen の認証なしサーバーには起動スクリプトが `local` を仮のキーとして使います。
+
+### 既存の Krea 2・H3・キャプション環境
+
+既定は `krea.backend: "studio"`。移動した `krea2-darask/` の公式 Diffusers Python 推論に接続します。デスクトップの既存 Krea 2／H3 起動・停止アイコンも使えます。
+
+| 環境 | パス | GUI / API |
+|---|---|---|
+| Krea 2 | `/mnt/solidigm-b/Mang-AI/krea2-darask` | `http://127.0.0.1:8189` |
+| H3 | `/mnt/solidigm-b/Mang-AI/minimaxH3-darask` | `http://127.0.0.1:7862` |
+| H3 モデル | `/mnt/solidigm-b/Mang-AI/models/h3` | — |
+| キャプション・学習 | `/mnt/solidigm-b/Mang-AI/caption-studio` | `http://127.0.0.1:3210` |
+
+`media_service` の `provider: krea / h3 / caption` と `action: start / stop` でサーバーを起動・停止し、`media_status` で状態・モデル・LoRA を確認します。停止は待機中に限ります。画像・動画・キャプション・学習はそれぞれ GPU メモリを使うので、必要に応じて使い終わった環境を停止します。別アプリの GPU プロセスは自動終了しません。
+
+Krea 2 の新しい画像は `krea2-darask/outputs/`、H3 は `minimaxH3-darask/outputs/`、学習結果は `caption-studio/training-runs/` に保存します。元パスには互換リンクを残しているため、仮想環境・旧履歴からの参照を保ちます。NixOS の CUDA・Python・ドライバーは OS の `/nix/store` を使います。
+
+このPCではH3の `memoryProfile: "shared"` を設定します。生成TransformerはINT8、テキストエンコーダーはINT4でGPUに保持し、Qwen併用時のメモリを節約します。`resident` はTEもINT8で保持する設定です。`h3_generate` の `memory_profile` でも切り替えられます。CPU退避は大きな空きRAMを必要とします。
+
+## 日本語エージェントとプラグイン
+
+エージェントプリセットは「Mang-AI · Qwen3.8」の1つです。DeepSeekのモデル・認証・検索経路を無効にし、DSHのツール実行機構をローカルQwenに接続しています。画面と公式プラグインの設定表示は日本語化しています。
+
+Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。チーム・サブエージェント・自動承認レビューは共通モデル設定を使います。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルQwenが作ります。
+
+## メディアギャラリーと整理済み素材
+
+サイドバーの **ギャラリー**、生成画面の **メディアギャラリー**、漫画編集画面の **ギャラリー**から開きます。エージェント用ツールは `media_open_gallery` です。
+
+- 制作中の漫画：全セッションの作品を選び、現在のページを吹き出し付きで確認。「漫画の編集を再開」で選択ページへ戻れます。
+- セッションのメディア：生成・編集した画像と動画をセッション別に表示します。
+- データセット：名前やファイル名で検索し、サムネイル、元サイズ、同名TXTの自然言語キャプションを確認できます。
+- 生成環境の履歴：Krea 2、H3、長尺動画の出力を閲覧できます。動画は再生・シーク、静止画はIOPaint・モザイク編集への受け渡しに対応します。
+
+一覧は48件ずつ読み込み、サムネイルはローカルFFmpegで作成・キャッシュします。ギャラリーの認証トークンは編集API用と分離しています。元ファイルは表示で変更せず、修正・モザイクを開くと編集用コピーを作ります。
+
+旧 `/run/media/hiroshi/ボリューム/H3` と `krea2` の素材はチェックサム照合後に移行し、旧パスには互換リンクを残しました。
+
+| 内容 | SSD内の保存先 |
+|---|---|
+| Krea 2データセット32組 | `datasets/krea2/imported/`（chara / concept / style） |
+| H3データセット16組 | `datasets/h3/imported-v2/` |
+| Krea 2最終LoRA24本 | `krea2-darask/models/loras/krea2/user/style/` |
+| H3最終LoRA8本 | `models/h3/loras/user/concept/` |
+| 全チェックポイントと学習履歴 | `training-runs/krea2/imported/`、`training-runs/h3/imported/` |
+| 旧設定・補助ファイル | `archives/previous-training/` |
+
+登録簿は `models/training-library.json`。`media_library` で検索し、返された `loraId` を生成、`path` を `caption_open` に使えます。`@akipeko`（464リンク）と `@maud0210`（232リンク）は元フォルダにも画像・キャプション実体がなく、保存場所は不明です。ギャラリーでは「元画像なし」と表示します。両者の学習済みLoRAは登録済みです。
+
+## 生成・長尺動画・高解像度化
+
+「生成画面を開いて」で `media_open_generator` を使います。モデル・LoRAの選択、手動生成、進捗・中止、結果の高解像度化ができます。
+
+Krea 2にはMUSE v3.5 INT8 Extended、Moody V8.0、Redcraft 3.0を登録しています。INT8 ConvRotの演算に対応し、生成は8ステップ、確認用は4ステップ加速LoRA、Hiresは既定1.5倍・4ステップ・denoise 0.25です。3モデルの実生成とRedcraftの768px Hiresを確認しています。
+
+H3にはEros Max beta5 INT8、DaSiWa Hybrid Turbo v3を追加しています。蒸留済みモデルは8ステップを既定とし、加速LoRAの二重適用を防ぎます。`h3_generate` の `latent_refine` は低解像度生成→潜在拡大→短い再生成、`media_upscale` は生成済み動画の画素拡大です。
+
+Eros beta5のsharedモードで、512×288・8ステップ→潜在768×448→4ステップの再生成→124フレーム・約5.2秒のMP4出力を確認しました。モデル読込を含むこの試験は約144秒でした。GPUと大容量RAMを使う生成・学習・モデル読込の前には、エージェントから処理内容と負荷の見込みを知らせます。
+
+長尺動画は `media_service(provider:longvideo,action:start)` → `h3_longvideo_plan` → `h3_longvideo_generate` → `media_job` の順で使います。共通設定を最初の段落に書き、空行で区切った各段落を1ショットにします。既定はDaSiWa v3・8ステップ・0.4MP、1ショット8秒。最大24ショット・計画尺120秒です。出力はフレーム単位に調整され、予定秒数とは少し異なります。
+
+Smite79の実コードで3ショット・約19.7秒・472フレームのMP4出力を確認しています。潜在1.5倍では896×512で出力しました。この長尺機能の潜在拡大は生成後・VAE復号前に行い、拡大後の拡散リファインはしません。ネイティブH3の `latent_refine` と処理が異なります。台詞のない試験出力の音声は無音でした。音声トラックの存在だけでは音声内容の成功と判定しません。
+
+長尺実行環境は `127.0.0.1:8190`、出力は `work/longvideo/`。GPUを大きく使うため、別の生成環境が待機中なら停止してから開始してください。エージェントとGUIの停止操作は実行中ジョブを保護します。
+
+### 公式リポジトリの Python を直接使う場合（任意）
+
+既存 Studio を使う通常設定では以下の追加導入は不要です。`krea.backend: "python"` に切り替えた場合のみ、次の独立した公式コード用の環境を指定します。
+
+[公式コード](https://github.com/krea-ai/krea-2) は `upstream/krea-2/` に取得済みです。CUDA が使える Python 3.12 以降の環境で依存関係を導入します。
+
+```bash
+cd /mnt/solidigm-b/Mang-AI/upstream/krea-2
+uv sync
+```
+
+公式の [Krea-2-Turbo](https://huggingface.co/krea/Krea-2-Turbo) の重みを保存し、`krea.weights` に実ファイルの絶対パスを指定します。環境変数 `OSS_TURBO` でも指定できます。設定の `krea` 節の例：
+
+```json
+{
+  "backend": "python",
+  "repo": "../upstream/krea-2",
+  "python": "../upstream/krea-2/.venv/bin/python",
+  "checkpoint": "oss_turbo",
+  "weights": "/mnt/solidigm-b/models/krea-2/実際の重みファイル.safetensors",
+  "width": 1024, "height": 1024,
+  "steps": 8, "cfg": 0, "mu": 1.15,
+  "timeoutMs": 1800000
+}
+```
+
+`width` / `height` はコマ画像の外接サイズです。コマ比率に合わせ16の倍数へ調整します。公式の `inference._pipeline()` / `sampling.sample()` を呼び、1ページのコマを同じモデルで順番に生成します。ページ間ではプロセスを終了します。Gemma/Qwen サーバー側のモデルのロード・アンロードは、そのサーバーで設定してください。
+
+RAW なら `checkpoint: "oss_raw"`、RAW 重み（または `OSS_RAW`）、`steps: 52`、`cfg: 3.5` に変更します。Krea のエンコーダー等は公式コードが別途取得する場合があります。モデルのダウンロードやライセンス同意は、このツールが自動代行しません。
+
+```bash
+cd /mnt/solidigm-b/Mang-AI/manga-studio
+npm run doctor
+```
+
+モデル ID と各 Studio の接続を確認します。Python 直接方式では公式コード・Python・重みの存在も検査します。推論は実行しません。
+
+## エージェントへの画像・動画・LoRA の依頼
+
+```text
+Krea 2 で、雨上がりの駅の背景を生成して。文字は入れないで。
+その画像を先頭フレームにして、H3 で約5秒の動画を作って。
+```
+
+`krea_generate` / `h3_generate` はジョブIDをすぐ返します。`media_job` で進捗・結果URLを確認し、必要なら `action: cancel` で停止します。完成結果はセッションの `media/` へ回収し、`outputPath` を返します。H3 の `firstFramePath` / `lastFramePath` にはこの画像パスやローカル PNG/JPEG/WebP を指定できます。ジョブの操作は投入した DSH セッションに限定します。
+
+```text
+「画像フォルダの絶対パス」の画像から、キャラクターLoRA用の
+英語の自然言語キャプションを作って。トリガーは my_character。
+既存キャプションは残し、できた文章を同名.txtに保存して。
+そのデータで推奨設定の Krea 2 LoRA を学習し、完了したら
+my_character という名前で Krea 2 に登録して。
+```
+
+`caption_open` に画像フォルダと `settings: {mode:"character", trigger:"my_character", language:"en"}` を指定します。画風なら `mode:"style"`、概念なら `mode:"concept"`。`learn` / `describe` / `concept` で覚えさせる特徴と画像ごとの違いを分けます。Caption Studio は一度に1フォルダを編集します。別画面でフォルダが変わったら、このセッションからの変更は拒否し、開き直すよう案内します。
+
+`caption_generate` は画像認識モデルを必要時に起動し、準備後に一括生成します。`caption_status` / `caption_edit` で内容を読み修正し、`caption_save` で .txt に書き出します。生成だけでは下書きです。既存の .txt はバックアップし、外部変更時は競合として止めます。`caption_cancel` で中断できます。
+
+`lora_prepare` が3枚以上の画像、非空キャプション、トリガー、RAW 重み、GPU を検査し、設定・警告・実行コマンドを返します。`lora_run` の `action:start` で学習し、`status` / `stop` で追跡・停止します。学習は実行ごとの画像・キャプションのコピーを使い、元画像を変更しません。`lora_install` が完成モデルとトリガーを Krea 2 の LoRA フォルダへ保存します。登録後は `media_status(provider:krea)` が返す ID とトリガーを `krea_generate` に渡します。
+
+## IOPaint 修正・モザイク
+
+漫画の文字編集画面の「画像修正・モザイク」から、生成済みのコマを選んで開きます。エージェントには次のように依頼できます。
+
+```text
+1ページ目の最初のコマを、IOPaintで手直しできる編集画面で開いて。
+「画像またはMP4の絶対パス」をモザイク編集画面で開いて。
+対象を自動検出してモザイクをかけ、結果をGUIで確認できるようにして。
+```
+
+GUIでは、ブラシ・矩形・消しゴムで範囲を指定し、「選択範囲を修正」でIOPaint / LaMaによる消去・補完、「選択範囲にモザイク」で手動処理できます。「範囲を自動選択」は検出結果を手描きで調整でき、「自動でモザイク」は検出から処理まで行います。対象カテゴリと検出しきい値を選べます。SAM2の輪郭補正も使用できます。IOPaintは周辺画像からの補完で、文章を指定する再生成には対応していません。
+
+元ファイルと各編集版は保存します。比較、版を戻す、結果のダウンロードが可能です。「コマに反映」で漫画に反映し、吹き出し・文字はそのまま残ります。元のコマが別の操作で再生成されていた場合は反映を止めます。処理中に画面を再読み込みしても進捗と中止操作を再開できます。
+
+MP4は再生・シーク、処理時間の指定に対応しています。手描き範囲は指定時間の同じ位置に適用し、自動処理はmosaic_editorのSAM2動画追跡を使います。書き出しはH.264で映像を再圧縮し、元の音声トラックをコピーします。IOPaint補完は静止画のみです。自動動画処理の上限は幅×高さ×フレーム数で3億、画像は3200万画素、入力ファイルは4GBです。
+
+| ツール | 操作 |
+|---|---|
+| `media_open_editor` | コマの `pageId/panelId` またはファイルの `path` を開き、編集ID・版番号・GUIリンクを取得 |
+| `media_edit` | `mode: inpaint / mosaic / detect`。矩形 `regions`、PNGマスク、`autoDetect` を指定して開始 |
+| `media_edit_status` | 編集IDと任意のジョブIDから履歴・進捗・結果を確認 |
+| `media_edit_cancel` | 実行中・待機中の処理を中止 |
+| `media_edit_commit` | 漫画のコマへ反映、または独立ファイルの保存先を取得 |
+
+矩形はページ全体の座標ではなく、元画像のピクセル座標です。例：`regions: [{x:100,y:80,width:160,height:120}]`。`block:0` は自動サイズ、`categories` は `penis / vagina / nipples / mosaic`、動画の範囲は `startSeconds/endSeconds` です。検出しただけのジョブは画像を変更しません。
+
+実体は `upstream/IOpaint/` と `upstream/mosaic_editor/`、共通Python環境は `upstream/IOpaint/.venv/`、モデルキャッシュは `models/editing/` です。このPCではCPU版PyTorchを導入し、生成・学習用のGPUと分けて実行します。LaMa、AnimeCensor、SAM2はダウンロード済みです。設定は `editing.python / mosaicRepo / cacheDir / wrapper / timeoutMs`。NixOSの共有ライブラリは `python/run-edit.sh` が解決します。
+
+再構築用の依存一覧は `python/editing-requirements.txt`。CPU版PyTorchのindexを利用して `uv pip install --python ../upstream/IOpaint/.venv/bin/python --torch-backend=cpu -r python/editing-requirements.txt` で導入できます。IOPaintリポジトリの指定コミットも必要です。
+
+## 漫画の使い方
+
+DSH でこのフォルダをワークスペースとして新しいセッションを作り、例えば次のように依頼します。
+
+```text
+このセッションで4ページのフルカラー漫画を作って。
+人物設定と話者を固定し、日本語脚本は Gemma に依頼して。
+台詞は manga_letter で入力し、脚本を確認できる編集画面を出して。
+```
+
+1. `manga_create` で現在のセッションの作品を作ります。
+2. `manga_draft` が人物設定を含めて Gemma に脚本を依頼します。台詞規約はリポジトリの `guidelines/02-narrative-craft.md` §4-10 を読みます。
+3. Qwen が `manga_letter` で台詞を配置します。編集画面の「吹き出しに入力」も同じ文字入力処理を使います。
+4. `manga_open_editor` のリンクで脚本を確認し、「脚本を確定」を押します。
+5. DSH に作画を依頼するか、編集画面の「このページを作画」を押します。生成中も文字を編集できます。
+6. `manga_export` で閲覧・印刷用 HTML、ページ SVG、編集 JSON を出力します。編集画面の PNG ボタンは現在のページを 2000×2828 で保存します。HTML はブラウザの印刷から PDF にできます。
+
+1ページ2〜4コマです。脚本を直すと確定状態を解除し、作画指示が変わったコマを作画待ちに戻します。既存の吹き出しは保持するので、内容と位置を確認してください。文字編集では画像の再生成は不要です。
+
+## 吹き出し入力の例
+
+`manga_status` で最新の `revision` を読み、`manga_letter` に渡します。
+
+```json
+{
+  "revision": 2, "pageId": "p1", "action": "upsert",
+  "bubble": {
+    "id": "saki-01", "speaker": "紗季", "text": "これ、あなたに。",
+    "kind": "speech", "direction": "vertical",
+    "x": 720, "y": 70, "width": 180, "height": 300,
+    "fontSize": 30, "tailX": 690, "tailY": 420
+  }
+}
+```
+
+座標はページ全体の `1000×1414`。同じ id は更新、新しい id は追加。削除は `action: "delete"` と `id`。形は通常・思考・四角枠・文字のみ、方向は縦書き／横書きです。改行を保持し、日本語の禁則を簡易処理します。溢れる文字は警告し、台詞を自動で削除しません。日本語フォント（Noto Sans CJK JP など）が必要です。
+
+## 保存・中断・復元
+
+| 保存先 | 内容 |
+|---|---|
+| `manga-studio/.dsh/` | DSH 会話・プロファイル |
+| `work/manga/studio.sqlite` | 作品、版履歴、ジョブ |
+| `work/manga/<session-key>/images/` | コマ PNG |
+| `work/manga/<session-key>/requests/` | Gemma 入出力 |
+| `work/manga/<session-key>/exports/` | 新しいフォルダに毎回書き出し |
+| `work/manga/<session-key>/media/` | Krea・H3の生成結果 |
+| `work/manga/<session-key>/edits/` | IOPaint・モザイクの元ファイルと各編集版 |
+
+同じ DSH セッションを開き、`manga_status` で再開します。新しいセッションは別作品になります。古い編集内容で新しい版を上書きしようとすると競合を返します。`manga_history` は直近100件を表示し、`manga_restore` は指定版を新しい版として復元します。
+
+Krea ジョブは全セッションで直列実行します。`manga_cancel` または編集画面から中止でき、再実行は不足コマだけを生成します。異常終了時も完成済み PNG を次回起動で回収します。意図的な再作画は `manga_render` の `regenerate: true`。旧画像は保持します。
+
+編集リンクはセッション専用で、DSH 再起動後には取り直します。編集サーバーは localhost のみで待ち受け、別セッションのトークンや他サイトからの書き込みを拒否します。
+
+## 検証と対応版
+
+```bash
+npm test
+npm run test:browser
+npm run test:dsh
+python3 tests/test_python_bridge.py
+```
+
+ギャラリーのAPI・トークン分離・パス制限・動画Rangeは `npm test` に含まれます。`node_modules/.bin/node tests/gallery-browser.mjs` はローカルの既存テスト画像・動画を使い、サムネイル、再生、キャプション、漫画編集への移動、モバイル表示を確認します。新しい画像・動画の生成はしません。`tests/live-h3-hires.mjs`、`tests/live-longvideo.mjs` はGPUを使うため、実行前に利用者へ知らせてください。
+
+ブラウザテストは Playwright Chromium または `CHROME_PATH` の Chrome を使います。NixOS の Chrome は自動検出します。DSH 統合テストでは `TEST_PYTHON` で Python 3.12 以降を指定できます。Gemma/Qwen は模擬 API、Krea は公式と同じ関数インターフェースのテスト用実装です。実機スモークテストは起動・入出力の機能確認であり、作品品質・長時間学習の品質・性能評価は含みません。
+
+`tests/live-studios.mjs` は明示実行する実機テストです。`node_modules/.bin/node tests/live-studios.mjs krea` は512px画像1枚、`caption` はテスト画像3枚のキャプションと1ステップLoRA、`h3` は256px・124フレーム・1ステップの動画を生成します。テストLoRAは品質評価用ではありません。通常の `npm test` ではモデルをロードしません。
+
+`node_modules/.bin/node tests/live-editor.mjs` は実モデルによる自動検出・IOPaint補完、手動モザイク、元画像保持、漫画への反映、履歴、動画の音声保持・シーク、モバイル表示を検証します。`bash python/run-edit.sh ../upstream/IOpaint/.venv/bin/python tests/live-sam2.py` は円だけの合成画像でSAM2輪郭抽出と3フレームの動画伝播を検証します。`TEST_EDITING=1 npm run test:dsh` は実DSHの編集ツールからPythonモザイク処理・漫画反映まで実行します。認識の取りこぼし率や長い動画での追跡品質を保証するテストではありません。
+
+DSH は `0.2.1-alpha.1` と lockfile を固定しています。DSH 本体の依存監査は既知の指摘15件（moderate 6 / high 9）、このプラグイン単体の production 依存監査は0件でした。破壊的な一括アップグレードは実施していません。更新時は結合テストも実施してください。
+
+参照・取得元：
+
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：`5badb15009ae1756c3afe0ae0cef1faafc290ccc`。プラグインと overlay で拡張。
+- [Gemma Ortenzya GGUF](https://huggingface.co/llmfan46/gemma-4-Ortenzya-The-Creative-Wordsmith-31B-it-uncensored-heretic-GGUF)
+- [Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B)
+- [Krea 2 公式コード](https://github.com/krea-ai/krea-2)：`db3984fbc6e13b34c0064990fc2d95ac64d00058`
+- [IOpaint](https://github.com/daraskme/IOpaint)：`b55b301919c492e7cc8169593f7ee6fd41a79e39`
+- [mosaic_editor](https://github.com/daraskme/mosaic_editor)：`d4b5afa7d4307000dac50a5f707d4ee280d1e87a`
+
+公式ソースは `upstream/`、追加実装は `manga-studio/`。第三者のコード・モデルには、それぞれの配布元のライセンスが適用されます。

@@ -1,0 +1,22 @@
+diff --git a/nodes/minimax_h3_latent_upscaler_3d.py b/nodes/minimax_h3_latent_upscaler_3d.py
+index c4eae28..47649f7 100644
+--- a/nodes/minimax_h3_latent_upscaler_3d.py
++++ b/nodes/minimax_h3_latent_upscaler_3d.py
+@@ -516,8 +516,8 @@ class MinimaxH3LatentUpscaler3D(io.ComfyNode):
+ 
+     @classmethod
+     def execute(cls, latent: dict, model_name: str, mode: UpscaleConfig,
+-                align: int, enable_temporal_chunking: bool, force_unload: bool,
+-                device: str, precision: str) -> io.NodeOutput:
++                align: int, enable_temporal_chunking: bool = True, force_unload: bool = True,
++                device: str = "cuda", precision: str = "fp16") -> io.NodeOutput:
+ 
+         if model_name.startswith('('):
+             raise ValueError("Please place model files into the latent_upscale_models directory")
+@@ -626,4 +626,4 @@ NODE_CLASS_MAPPINGS = {
+ }
+ NODE_DISPLAY_NAME_MAPPINGS = {
+     "MinimaxH3LatentUpscaler3D": "Minimax H3 Latent Upscaler (3D)",
+-}
+\ No newline at end of file
++}

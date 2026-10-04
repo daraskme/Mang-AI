@@ -1,0 +1,15 @@
+[Unit]
+Description=Mang-AI local Qwen and Ortenzya model router
+ConditionPathIsMountPoint=/mnt/solidigm-b
+
+[Service]
+Type=exec
+WorkingDirectory=/mnt/solidigm-b/Mang-AI
+ExecStart=/nix/store/1a1gc0c1yndbcw1hii58a6z5fnk2fhdh-llama-cpp-0.4.1/bin/llama-server --host 127.0.0.1 --port 1234 --models-preset /mnt/solidigm-b/Mang-AI/manga-studio/local-models.ini --models-max 1 --no-webui
+Environment=LD_LIBRARY_PATH=/run/opengl-driver/lib
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

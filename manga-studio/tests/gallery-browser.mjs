@@ -1,0 +1,32 @@
+import {chromium} from '@playwright/test';
+import assert from 'node:assert/strict';
+import {mkdir,writeFile,copyFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {MangaService} from '../src/service.js';
+import {startEditor} from '../src/editor-server.js';
+import {sessionKey} from '../src/store.js';
+import {nativeSubprocess} from './native-subprocess.mjs';
+import {config,tempRoot,script,bubble} from './fixtures.js';
+const root=await tempRoot('gallery-browser'),c=config(join(root,'sessions')),dataset=join(root,'datasets','watercolor'),missing=join(root,'datasets','missing');
+await mkdir(dataset,{recursive:true});await mkdir(missing);await mkdir(join(root,'models'));c.library=join(root,'models','training-library.json');
+await writeFile(c.library,JSON.stringify({items:[{kind:'dataset',family:'krea2',category:'style',name:'水彩の素材',path:dataset,images:1,videos:1},{kind:'dataset',family:'krea2',category:'style',name:'元画像不明の素材',path:missing,images:0,videos:0,missingLinks:464}]}));
+await copyFile('../krea2-darask/outputs/2026-10-04/krea2_091343_859094_42_136abe.png',join(dataset,'teapot.png'));
+await copyFile('.test-output/longvideo-live/d19d5155b64f43ff5a45759728be684a/media/016dc9d2-f81d-4a89-811e-6eacb6acbc70.mp4',join(dataset,'boat.mp4'));
+await writeFile(join(dataset,'teapot.txt'),'赤いティーポット。水彩画のやわらかな輪郭。<script>window.injected=true</script>');
+const service=new MangaService(c,nativeSubprocess),editor=await startEditor(service,0),browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'/nix/store/i068vcjr9d1dk0ahikjpwgsncxbsslsf-google-chrome-153.0.8010.52/share/google/chrome/chrome'});
+try{
+  service.create('gallery-comic',{title:'雨上がりの手紙',brief:'駅で手紙を渡す場面'});service.setScript('gallery-comic',{script,revision:1});service.letter('gallery-comic',{pageId:'p1',revision:2,action:'upsert',bubble});
+  const page=await browser.newPage({viewport:{width:1350,height:950}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(editor.galleryUrl(sessionKey('gallery-browser'),'gallery-browser'));
+  await page.locator('.card').first().waitFor();await page.locator('.card').click();await page.locator('#edit:not([disabled])').waitFor();assert.equal(await page.locator('#preview-title').innerText(),'1ページ');await page.locator('#close').click();
+  await page.locator('[data-group=datasets]').click();await page.getByRole('button',{name:'水彩の素材',exact:false}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.card img').length===2&&[...document.querySelectorAll('.card img')].every(x=>x.complete&&x.naturalWidth>0));
+  await page.screenshot({path:'.test-output/gallery-desktop.png',fullPage:true});
+  await page.locator('.card').filter({hasText:'teapot.png'}).click();await page.waitForFunction(()=>document.querySelector('#caption').textContent.includes('赤いティーポット'));assert.equal(await page.evaluate(()=>window.injected),undefined);
+  await page.locator('#close').click();await page.locator('.card').filter({hasText:'boat.mp4'}).click();
+  await page.waitForFunction(()=>document.querySelector('video')?.readyState>=1);assert(await page.locator('video').evaluate(v=>v.duration>19));await page.locator('video').evaluate(async v=>{v.muted=true;await v.play();});await page.waitForFunction(()=>document.querySelector('video').currentTime>0);await page.locator('#close').click();
+  await page.getByRole('button',{name:'元画像不明の素材',exact:false}).click();await page.waitForFunction(()=>!document.querySelector('#missing').hidden);assert.match(await page.locator('#missing').innerText(),/464/);
+  await page.getByRole('button',{name:'水彩の素材',exact:false}).click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.test-output/gallery-mobile.png',fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.locator('[data-group=projects]').click();await page.locator('.card').click();await page.locator('#edit:not([disabled])').click();await page.waitForURL(u=>u.pathname==='/');await page.waitForFunction(()=>document.querySelector('#title').textContent==='雨上がりの手紙');assert.deepEqual(errors,[]);
+  console.log('PASS gallery: manga preview/edit, real image/video thumbnails, playback, captions, missing data, mobile');
+}finally{await browser.close();await editor.close();await service.close();await rm(root,{recursive:true,force:true});}

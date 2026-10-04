@@ -1,0 +1,55 @@
+{
+  "patches": [
+    {
+      "name": "krea2",
+      "path": "krea2-darask",
+      "url": "https://github.com/daraskme/krea2-darask.git",
+      "revision": "af53746e5880c26b3798b077a5f2e14868a13408",
+      "patch": "krea2.patch",
+      "sha256": "e6c42ea9601297f595182d2960b97f423ddefc77dfc58f0cfa1beb8b3528ff74"
+    },
+    {
+      "name": "h3",
+      "path": "minimaxH3-darask",
+      "url": "https://github.com/daraskme/minimaxH3-darask.git",
+      "revision": "151ac0483315b598405bc7f0dd5f3190859f54c5",
+      "patch": "h3.patch",
+      "sha256": "d71bd8b921195d51e124256182a9a1386962a77fb912a3acd7f702718680b733"
+    },
+    {
+      "name": "latent-upscaler",
+      "path": "upstream/ComfyUI/custom_nodes/Comfyui_Minimax_h3_latent_Upscaler",
+      "url": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git",
+      "revision": "40316cf008b2fd8663263270669eb4da23f89d2c",
+      "patch": "latent-upscaler.patch",
+      "sha256": "ed0dc55fecb5094cacc3d60c74237f5a9759e707c2a41ac063d2728faa74bc06"
+    }
+  ],
+  "dependencies": {
+    "comfyui": {
+      "path": "upstream/ComfyUI",
+      "revision": "f1072eb0350638a3390ddb6afbcaa8c6b237c6fd",
+      "url": "https://github.com/Comfy-Org/ComfyUI.git"
+    },
+    "iopaint": {
+      "path": "upstream/IOpaint",
+      "revision": "b55b301919c492e7cc8169593f7ee6fd41a79e39",
+      "url": "https://github.com/daraskme/IOpaint.git"
+    },
+    "mosaic-editor": {
+      "path": "upstream/mosaic_editor",
+      "revision": "d4b5afa7d4307000dac50a5f707d4ee280d1e87a",
+      "url": "https://github.com/daraskme/mosaic_editor.git"
+    },
+    "krea-official": {
+      "path": "upstream/krea-2",
+      "revision": "db3984fbc6e13b34c0064990fc2d95ac64d00058",
+      "url": "https://github.com/krea-ai/krea-2.git"
+    }
+  },
+  "longvideos": {
+    "repo": "Smite79/MiniMax-H3-Longvideos",
+    "revision": "932b4e751c70a2d0194c2b7c7f731106adb830af",
+    "redistribute": false
+  }
+}

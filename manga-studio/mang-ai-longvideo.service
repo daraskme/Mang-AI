@@ -1,0 +1,14 @@
+[Unit]
+Description=Mang-AI H3 LongVideos local backend
+ConditionPathIsMountPoint=/mnt/solidigm-b
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/solidigm-b/Mang-AI/manga-studio
+ExecStart=/run/current-system/sw/bin/bash /mnt/solidigm-b/Mang-AI/manga-studio/scripts/run-longvideo.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+
+[Install]
+WantedBy=default.target

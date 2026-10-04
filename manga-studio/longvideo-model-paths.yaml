@@ -1,0 +1,7 @@
+mang_ai_h3:
+  base_path: /mnt/solidigm-b/Mang-AI/models/h3
+  diffusion_models: diffusion_models/MiniMaxH3
+  loras: loras
+  text_encoders: comfy/text_encoders
+  vae: comfy/vae
+  latent_upscale_models: latent_upscalers

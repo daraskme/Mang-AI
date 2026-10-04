@@ -1,0 +1,56 @@
+# OS・WSL 由来
+*:Zone.Identifier
+.DS_Store
+Thumbs.db
+
+# 一時ファイル
+*.tmp
+*.bak
+~$*
+__pycache__/
+*.pyc
+
+# 任意の作業ログ
+.grok-log/
+
+# 挿絵PDF生成用のローカルvenv
+.venv-pdf/
+
+# 受け渡し用ディレクトリの中身は追跡しない（第三者著作物の誤コミット防止）
+user-provided/*
+!user-provided/.gitkeep
+
+# NovelAI API トークンと生成画像（第三者へ出さない）
+.env
+.env.local
+secrets/
+work/generated/
+
+# Local manga studio, upstream checkouts and generated assets
+upstream/
+work/manga/
+/krea2-darask/
+/minimaxH3-darask/
+/caption-studio/
+models/
+datasets/
+archives/
+training-runs/
+.migration/
+.cache/
+work/
+**/.test-output/
+**/.dsh/
+**/node_modules/
+**/.venv/
+**/__pycache__/
+*.sqlite*
+*.gguf
+*.safetensors
+*.onnx
+*.pth
+*.ckpt
+*.partial
+*.log
+**/.env*
+!**/.env.example
