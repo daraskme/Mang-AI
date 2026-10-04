@@ -59,8 +59,9 @@ export function replaceScript(project, pages) {
 export function validateBubble(b) {
   if (!b || typeof b !== 'object') throw new Error('吹き出しが不正です');
   if (!['speech','thought','caption','text'].includes(b.kind)) throw new Error('吹き出し種別が不正です');
-  if (!['vertical','horizontal'].includes(b.direction)) throw new Error('文字方向が不正です');
-  const out = { id: text(b.id, '吹き出しID', 80), kind: b.kind, direction: b.direction, text: text(b.text, '本文', 1000), speaker: typeof b.speaker === 'string' ? b.speaker.slice(0,120) : '' };
+  const direction = b.direction ?? 'vertical';
+  if (!['vertical','horizontal'].includes(direction)) throw new Error('文字方向が不正です');
+  const out = { id: text(b.id, '吹き出しID', 80), kind: b.kind, direction, text: text(b.text, '本文', 1000), speaker: typeof b.speaker === 'string' ? b.speaker.slice(0,120) : '' };
   if (!/^[a-zA-Z0-9_-]+$/.test(out.id)) throw new Error('吹き出しIDは英数字、ハイフン、アンダースコアのみです');
   for (const [key,min,max] of [['x',0,PAGE_W],['y',0,PAGE_H],['width',60,PAGE_W],['height',60,PAGE_H],['fontSize',12,100],['tailX',0,PAGE_W],['tailY',0,PAGE_H]]) {
     const n = b[key];
@@ -81,11 +82,14 @@ export function editLettering(project, { pageId, action, bubble, id }) {
     if (!page.bubbles.some(b => b.id === id)) throw new Error('吹き出しが見つかりません');
     page.bubbles = page.bubbles.filter(b => b.id !== id);
   } else if (action === 'upsert') {
-    const value = validateBubble(bubble);
+    const existing = page.bubbles.find(b => b.id === bubble?.id);
+    const value = validateBubble(bubble ? {...bubble,direction:bubble.direction??existing?.direction??'vertical'} : bubble);
     const index = page.bubbles.findIndex(b => b.id === value.id);
     if (index < 0) {
       if (page.bubbles.length >= 32) throw new Error('吹き出しは1ページ32個までです');
       page.bubbles.push(value);
     } else page.bubbles[index] = value;
-  } else throw new Error('action は upsert または delete です');
+  } else if (action === 'verticalize') {
+    for (const b of page.bubbles) if (['speech','thought'].includes(b.kind)) b.direction = 'vertical';
+  } else throw new Error('action は upsert / delete / verticalize です');
 }

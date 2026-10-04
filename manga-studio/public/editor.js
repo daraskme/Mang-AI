@@ -9,6 +9,10 @@ galleryButton.onclick=()=>act(async()=>{requireSaved();location.href=(await api(
 let project=null,pageIndex=0,selected='',draft=null,dirty=false,busy=false,drag=null;
 const imageURLs=new Map();
 const fields=['speaker','text','kind','direction','x','y','width','height','fontSize','tailX','tailY'];
+const directionHelp=document.createElement('p');directionHelp.className='muted';directionHelp.textContent='台詞は縦書きが基本です。上から下、列は右から左へ読みます。縦書きでは、改行は次の左列へ送ります。';$('direction').closest('.field-grid').after(directionHelp);
+$('direction').querySelector('option[value="vertical"]').textContent='縦書き（基本）';
+const verticalizeButton=document.createElement('button');verticalizeButton.id='verticalize';verticalizeButton.textContent='このページの台詞を縦書きに';verticalizeButton.className='save-button';directionHelp.after(verticalizeButton);
+verticalizeButton.onclick=()=>act(async()=>{requireSaved();const result=await api('letter',{pageId:currentPage().id,revision:project.revision,action:'verticalize'});project=result.project;drawAll();message('このページの吹き出しを縦書きにしました'+(result.warnings.length?' ／ '+result.warnings.join(' ／ '):''));});
 const numeric=new Set(['x','y','width','height','fontSize','tailX','tailY']);
 const artSection=document.createElement('section');artSection.className='dialogues';
 const artHeading=document.createElement('h2');artHeading.textContent='画像の修正・モザイク';
@@ -58,6 +62,7 @@ function drawAll(jobs=[]){
   artSelect.replaceChildren();page?.panels.forEach((p,i)=>{if(p.image)artSelect.add(new Option(`コマ ${i+1}`,p.id));});artButton.disabled=!artSelect.options.length;
   $('approve').textContent=project.approved?'脚本確定済み ✓':'脚本を確定';
   $('approve').disabled=!!project.approved||!page;$('render').disabled=!project.approved||!page;$('add').disabled=!page;
+  verticalizeButton.disabled=!page?.bubbles.some(b=>['speech','thought'].includes(b.kind)&&b.direction==='horizontal');
   $('selection').replaceChildren(new Option('選択してください',''));
   for(const b of page?.bubbles||[])$('selection').add(new Option((b.speaker?b.speaker+'：':'')+b.text.slice(0,18),b.id));
   selectBubble(selected);
@@ -77,6 +82,7 @@ function drawAll(jobs=[]){
 }
 function selectBubble(id){
   selected=id;draft=structuredClone(currentPage()?.bubbles.find(b=>b.id===id)||null);$('selection').value=draft?id:'';
+  if(draft)draft.direction??='vertical';
   for(const field of fields){$(field).value=draft?.[field]??'';$(field).disabled=!draft;}
   $('remove').disabled=!draft;$('save').disabled=!draft||!dirty;drawCanvas();
 }

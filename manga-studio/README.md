@@ -241,7 +241,9 @@ DSH でこのフォルダをワークスペースとして新しいセッショ�
 }
 ```
 
-座標はページ全体の `1000×1414`。同じ id は更新、新しい id は追加。削除は `action: "delete"` と `id`。形は通常・思考・四角枠・文字のみ、方向は縦書き／横書きです。改行を保持し、日本語の禁則を簡易処理します。溢れる文字は警告し、台詞を自動で削除しません。日本語フォント（Noto Sans CJK JP など）が必要です。
+座標はページ全体の `1000×1414`。同じ id は更新、新しい id は追加。削除は `action: "delete"` と `id`。形は通常・思考・四角枠・文字のみです。**漫画の台詞は縦書きが基本**で、上から下、列は右から左へ読みます。新規入力で `direction` を省略すると `vertical`、既存吹き出しの更新で省略した場合は現在の方向を保ちます。横書きが必要な箇所は `horizontal` を指定できます。
+
+編集画面の **このページの台詞を縦書きに**、または `manga_letter` の `action: "verticalize"` で、そのページの通常・思考の吹き出しをまとめて縦書きにできます。本文、位置、画像は保持され、保存履歴から戻せます。縦書きでの改行は次の左列へ送ります。句読点・閉じ括弧の行頭禁則、開き括弧の行末禁則、連続する三点リーダー・ダッシュの分断を簡易処理します。溢れる文字は警告し、吹き出しの寸法や文字サイズで調整します。SVG・PNG・印刷用HTMLも同じ縦組みです。日本語フォント（Noto Sans CJK JP など）が必要です。
 
 ## 保存・中断・復元
 
@@ -273,6 +275,8 @@ python3 tests/test_python_bridge.py
 ギャラリーのAPI・トークン分離・パス制限・動画Rangeは `npm test` に含まれます。`node_modules/.bin/node tests/gallery-browser.mjs` はローカルの既存テスト画像・動画を使い、サムネイル、再生、キャプション、漫画編集への移動、モバイル表示を確認します。新しい画像・動画の生成はしません。`tests/live-h3-hires.mjs`、`tests/live-longvideo.mjs` はGPUを使うため、実行前に利用者へ知らせてください。
 
 KromaのGUI選択は `node_modules/.bin/node tests/kroma-browser.mjs`（Kreaサーバー起動済み、生成なし）。実モデルの生成とHiresは `tests/live-kroma.mjs`（GPUを使用、実行前に通知）。`TEST_STYLE_LORA=1` で整理済み漫画スタイルLoRAも使います。`TEST_SERVICE=1 node_modules/.bin/node tests/dsh-smoke.mjs` は実DSHの管理プロセスでKreaサーバーを起動・停止しますが、モデルは読み込みません。
+
+縦書きは `node_modules/.bin/node tests/vertical-browser.mjs` で、文字の上下方向・列の右左順・一括変更・保存後の復元・SVG/PNG書き出しを確認します。GPU生成やモデル読み込みは行いません。
 
 ブラウザテストは Playwright Chromium または `CHROME_PATH` の Chrome を使います。NixOS の Chrome は自動検出します。DSH 統合テストでは `TEST_PYTHON` で Python 3.12 以降を指定できます。Gemma/Qwen は模擬 API、Krea は公式と同じ関数インターフェースのテスト用実装です。実機スモークテストは起動・入出力の機能確認であり、作品品質・長時間学習の品質・性能評価は含みません。
 

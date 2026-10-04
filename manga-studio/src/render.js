@@ -4,6 +4,7 @@ export const escapeXML = value => String(value).replace(/[&<>"']/g, c => ({'&':'
 const segments = value => Array.from(new Intl.Segmenter('ja',{granularity:'grapheme'}).segment(value), x=>x.segment);
 const noStart = new Set(segments('、。，．？！）」』】〕〉》ぁぃぅぇぉっゃゅょァィゥェォッャュョー々'));
 const noEnd = new Set(segments('（「『【〔〈《'));
+const paired = new Set(['…','‥','―','—']);
 
 /** Conservative Japanese wrapping. Authored newlines always survive. */
 export function wrapText(value, capacity) {
@@ -13,8 +14,8 @@ export function wrapText(value, capacity) {
     if(!chars.length) {lines.push('');continue;}
     while(chars.length) {
       let end=Math.min(Math.max(1,capacity),chars.length);
-      if(end<chars.length && noStart.has(chars[end])) end++;
-      if(end>1 && end<chars.length && noEnd.has(chars[end-1])) end--;
+      while(end<chars.length && (noStart.has(chars[end]) || (paired.has(chars[end]) && chars[end]===chars[end-1]))) end++;
+      while(end>1 && end<chars.length && noEnd.has(chars[end-1])) end--;
       lines.push(chars.splice(0,end).join(''));
     }
   }
@@ -23,7 +24,7 @@ export function wrapText(value, capacity) {
 export function bubbleLayout(b) {
   const inset = ['speech','thought'].includes(b.kind) ? 0.19 : 0.08;
   const w=b.width*(1-2*inset), h=b.height*(1-2*inset);
-  const vertical=b.direction==='vertical';
+  const vertical=(b.direction??'vertical')==='vertical';
   const capacity=Math.max(1,Math.floor((vertical?h:w)/b.fontSize));
   const lines=wrapText(b.text,capacity);
   const breadth=lines.length*b.fontSize*1.22;
@@ -44,7 +45,7 @@ export function bubbleSVG(b, interactive=false) {
   const text=lines.map((line,i)=>{
     const x=vertical?cx+(lines.length-1)*b.fontSize*.61-i*b.fontSize*1.22:cx;
     const y=vertical?b.y+b.height*inset:cy-(lines.length-1)*b.fontSize*.61+i*b.fontSize*1.22;
-    return `<text x="${x}" y="${y}" ${font} font-size="${b.fontSize}" fill="#151515" ${vertical?'style="writing-mode:vertical-rl;text-orientation:mixed" text-anchor="start"':'text-anchor="middle" dominant-baseline="central"'} xml:space="preserve">${escapeXML(line)}</text>`;
+    return `<text x="${x}" y="${y}" lang="ja" ${font} font-size="${b.fontSize}" fill="#151515" ${vertical?'style="writing-mode:vertical-rl;text-orientation:mixed" text-anchor="start"':'text-anchor="middle" dominant-baseline="central"'} xml:space="preserve">${escapeXML(line)}</text>`;
   }).join('');
   const hit=interactive?`<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="transparent" stroke="${overflow?'#d34639':'transparent'}" stroke-width="3" data-hit="${escapeXML(b.id)}"/>`:'';
   return `<g data-bubble="${escapeXML(b.id)}"><title>${escapeXML(b.speaker?b.speaker+'：'+b.text:b.text)}</title>${shape}${text}${hit}</g>`;

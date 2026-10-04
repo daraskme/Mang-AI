@@ -58,8 +58,32 @@ test('Japanese line breaks, grapheme clusters, and overflow are explicit',()=>{
   assert.deepEqual(wrapText('こんにちは\nまた明日',20),['こんにちは','また明日']);
   assert.deepEqual(wrapText('あいう、え',3),['あいう、','え']);
   assert.deepEqual(wrapText('👩‍💻あ',1),['👩‍💻','あ']);
+  assert.deepEqual(wrapText('あいう？！え',3),['あいう？！','え']);
+  assert.deepEqual(wrapText('あい「『うえ』」',4),['あい','「『うえ』」']);
+  assert.deepEqual(wrapText('あい……う',3),['あい……','う']);
+  assert.deepEqual(wrapText('あい――う',3),['あい――','う']);
   assert.equal(bubbleLayout(bubble).overflow,false);
   assert.equal(bubbleLayout({...bubble,text:'長い台詞'.repeat(80)}).overflow,true);
+});
+test('new dialogue defaults to vertical; explicit horizontal edits persist and page conversion preserves text and artwork',()=>{
+  const unset={...bubble};delete unset.direction;
+  assert.equal(validateBubble(unset).direction,'vertical');
+  assert.equal(bubbleLayout(unset).vertical,true);
+  assert.throws(()=>validateBubble({...unset,direction:'rtl'}),/文字方向/);
+  const p={pages:normalizeScript(script)};
+  p.pages[0].panels[0].image='keep.png';
+  editLettering(p,{pageId:'p1',action:'upsert',bubble:unset});
+  assert.equal(p.pages[0].bubbles[0].direction,'vertical');
+  editLettering(p,{pageId:'p1',action:'upsert',bubble:{...unset,direction:'horizontal'}});
+  editLettering(p,{pageId:'p1',action:'upsert',bubble:unset});
+  assert.equal(p.pages[0].bubbles[0].direction,'horizontal');
+  for(const kind of ['thought','caption','text'])editLettering(p,{pageId:'p1',action:'upsert',bubble:{...bubble,id:kind,kind,direction:'horizontal'}});
+  const before=structuredClone(p.pages[0].bubbles);
+  p.pages.push({...structuredClone(p.pages[0]),id:'p2'});
+  editLettering(p,{pageId:'p1',action:'verticalize'});
+  for(const [i,b] of p.pages[0].bubbles.entries())assert.deepEqual(b,{...before[i],direction:['speech','thought'].includes(b.kind)?'vertical':'horizontal'});
+  assert.deepEqual(p.pages[1].bubbles,before);
+  assert.equal(p.pages[0].panels[0].image,'keep.png');
 });
 test('Gemma cannot overwrite concurrent manual edits; script changes retain lettering',async()=>{
   const root=await tempRoot();let finish;

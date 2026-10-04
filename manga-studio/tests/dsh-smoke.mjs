@@ -41,7 +41,7 @@ const server=createServer(async(req,res)=>{
     let call;
     if(step===0)call=['manga_create',{title:'DSH 統合試験',brief:'ローカル制作の検証'}];
     else if(step===1)call=['manga_draft',{instruction:'1ページにする',pageCount:1,revision:1}];
-    else if(step===2)call=['manga_letter',{pageId:'p1',revision:2,action:'upsert',bubble}];
+    else if(step===2)call=['manga_letter',{pageId:'p1',revision:2,action:'upsert',bubble:{...bubble,direction:undefined}}];
     else if(step===3)call=['manga_open_editor',{}];
     else if(step===4){
       assert(value?.url,`editor URL missing: ${JSON.stringify(last)}`);const url=new URL(value.url),hash=new URLSearchParams(url.hash.slice(1));
@@ -90,7 +90,7 @@ try{
   if(serverError){console.error(stderr.slice(-12000));throw serverError;}
   assert.equal(code,0,`DSH exited ${code}\n${stderr}\n${stdout}`);assert(stdout.includes('DSH_MANGA_SMOKE_OK'),stdout);
   assert.equal(gemmaCalls,1);const db=new Store(c.dataDir);
-  try{const row=db.db.prepare('SELECT body FROM projects').get(),p=JSON.parse(row.body);assert.equal(p.pages[0].bubbles[0].text,bubble.text);assert(p.pages[0].panels.every(p=>p.image));assert.equal(db.jobs(p.id)[0].status,'completed');}finally{db.close();}
+  try{const row=db.db.prepare('SELECT body FROM projects').get(),p=JSON.parse(row.body);assert.equal(p.pages[0].bubbles[0].text,bubble.text);assert.equal(p.pages[0].bubbles[0].direction,'vertical');assert(p.pages[0].panels.every(p=>p.image));assert.equal(db.jobs(p.id)[0].status,'completed');}finally{db.close();}
   await writeFile(join(packageRoot,'.test-output/dsh-smoke.jsonl'),stdout);
   console.log('PASS DSH integration: Qwen tool calls → Gemma script → lettering tool → editor approval → managed Krea Python → exported SVG/HTML');
   if(testEditing)console.log('PASS real DSH media_open_editor → managed mosaic Python → status → comic commit');

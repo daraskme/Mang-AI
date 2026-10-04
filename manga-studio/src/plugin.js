@@ -56,10 +56,10 @@ export async function apply(ctx, options) {
   register('manga_set_script','確認した漫画脚本 JSON を保存する。pages 配列、layout、purpose、panels（action,artPrompt,dialogue）が必要。画像と文字を分離する。',{
     script:object('脚本 JSON。コマ割りは manga_draft と同じ形式'),revision:number('現在の revision'),
   },(args,exec)=>({project:service.setScript(exec.agent.id,args)}));
-  register('manga_letter','専用の吹き出し・文字入力ツール。台詞は必ずこのツールで入力し、作画プロンプトへ含めない。座標は1000×1414のページ座標。',{
-    revision:number('現在の revision'),pageId:string('p1 など'),action:{type:'string',enum:['upsert','delete'],required:true},id:string('delete 時の吹き出しID',false),
+  register('manga_letter','専用の吹き出し・文字入力ツール。漫画の台詞は基本縦書き（上から下、列は右から左）。作画プロンプトへ文字を含めない。verticalizeはこのページの通常・思考の吹き出しを一括で縦書きにする。座標は1000×1414。',{
+    revision:number('現在の revision'),pageId:string('p1 など'),action:{type:'string',enum:['upsert','delete','verticalize'],required:true},id:string('delete 時の吹き出しID',false),
     bubble:{type:'object',additionalProperties:false,properties:{
-      id:string('英数字の吹き出しID'),text:string('画像に重ねる日本語本文'),speaker:string('話者',false),kind:{type:'string',enum:['speech','thought','caption','text'],required:true},direction:{type:'string',enum:['vertical','horizontal'],required:true},
+      id:string('英数字の吹き出しID'),text:string('画像に重ねる日本語本文'),speaker:string('話者',false),kind:{type:'string',enum:['speech','thought','caption','text'],required:true},direction:{type:'string',enum:['vertical','horizontal'],description:'新規は省略すると縦書き。更新時の省略は現在の方向を保持。通常はvertical、横書きが必要な箇所だけhorizontal'},
       ...Object.fromEntries(['x','y','width','height','fontSize','tailX','tailY'].map(k=>[k,{type:'number',required:true,description:k==='fontSize'?'12〜100。通常26〜34':`ページ上の ${k}`}]))},description:'upsert時に必要。x,y は左上。尾の先端が tailX,tailY'},
   },(args,exec)=>service.letter(exec.agent.id,args));
   register('manga_open_editor','このセッションの吹き出し・文字編集画面を開くための URL を返す。脚本の確認・確定もこの画面で行う。',{},(_args,exec)=>{
@@ -78,6 +78,7 @@ export async function apply(ctx, options) {
   register('manga_export','ページSVG・閲覧/印刷用HTML・編集JSONをセッション配下の新しいフォルダへ書き出す。',{},(_args,exec)=>service.export(exec.agent.id));
   registerStudioTools(register,service.studios);
   ctx.systemPrompt.section({name:'resource-notice',order:20001,interpolate:false,text:'利用者の希望：GPUやRAMへ大きな負荷をかける生成・学習・大規模モデル読込の前に、実行する内容と負荷の見込みを短く日本語で知らせる。既に依頼されている処理は、通知のためだけに承認を再要求しない。負荷の数値が不明なら推測値を断定しない。'});
+  ctx.systemPrompt.section({name:'manga-vertical-lettering',order:10301,interpolate:false,text:'漫画の日本語の台詞は基本縦書き。manga_letterの新規入力はdirection:verticalを使い、上から下・右の列から左の列へ読む。改行は次の左列へ送る。横書きは利用者が指定した箇所や横組みの看板等に限る。既存ページの台詞を縦書きへ変更する指示にはmanga_letter(action:verticalize)を使える。文字や画像を再生成せず、縦組みで溢れた場合は吹き出しの高さ・幅・文字サイズを調整する。'});
   register('media_open_gallery','データセット、全セッションの制作中の漫画、生成画像・動画を閲覧するメディアギャラリーを開く。キャプション確認と編集再開ができる。',{},(_a,e)=>({url:editor.galleryUrl(sessionKey(e.agent.id),e.agent.id)}));
   ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_GALLERY__',value:editor.galleryUrl(sessionKey('gallery'),'gallery')}));
   register('media_open_generator','画像・動画・長尺動画の生成画面を開く。モデル選択、手動生成、ショット計画、進捗確認、Hires・アップスケールができる。',{},(_a,e)=>({url:editor.generationUrl(sessionKey(e.agent.id),e.agent.id)}));
