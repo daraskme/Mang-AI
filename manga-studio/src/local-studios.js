@@ -298,13 +298,14 @@ export class LocalStudios {
       return ['edit','settings'].includes(action)?{updated:true,projectId:p.id}:result;
     });
   }
-  async prepareTraining(session,{ids,config={}},signal) {
+  async prepareTraining(session,{ids,config={},family='krea2'},signal) {
+    if(family!=='krea2')throw Error(family==='h3'?'H3の新規LoRA学習は未統合です。素材とキャプションの準備まで保存し、Krea2の学習では代用しないでください。media_workflow_guide(workflow:lora, section:train)を参照してください。':'学習先familyはkrea2またはh3です');
     return this.serial(async()=>{
       const {project:p}=await this.captionProject(session,signal);
       const defaults=await this.request('caption','/api/training/defaults',{signal});
       const plan=await this.request('caption','/api/training/prepare',{body:{config:{...defaults.settings,...config},ids:ids?.length?ids:p.items.map(i=>i.id),expectedProjectId:p.id},signal,timeoutMs:120000});
-      const id=this.save(session,'training',{remoteId:plan.id,projectId:p.id,run:plan.run,trigger:plan.trigger});
-      return {id,plan};
+      const id=this.save(session,'training',{family,remoteId:plan.id,projectId:p.id,run:plan.run,trigger:plan.trigger});
+      return {id,family,plan};
     });
   }
   async training(session,id,action,signal) {

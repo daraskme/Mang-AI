@@ -21,7 +21,13 @@ DeepSeek Harness を漫画制作向けに拡張するプラグインです。DSH
 | 画像の消去・補完 | daraskme/IOpaint の LaMa と共通編集GUI |
 | 画像・動画のモザイク | daraskme/mosaic_editor の検出・SAM2追跡・マスク処理と共通編集GUI |
 
-Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の絵を生成し、ページのコマ割りと台詞は SVG として合成します。文字修正に再作画は不要です。Kreaは公式Python推論、H3単発は既存Python環境、H3長尺はローカルComfyUI上のH3-LongVideosを使います。
+Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の絵と空の吹き出しを生成し、ページのコマ割りと文字は SVG として合成します。文字修正に再作画は不要です。Kreaは公式Python推論、H3単発は既存Python環境、H3長尺はローカルComfyUI上のH3-LongVideosを使います。
+
+漫画の文字は商用利用可能な **源暎アンチック v6.0a（通常版）** を標準にしています。縦書き編集・ギャラリー・SVG/PNG書き出しに適用し、SVGにはフォントと著作権表示・OFL全文を埋め込みます。[利用条件と同梱記録](docs/third-party-fonts.md) を参照してください。
+
+新しく作画するときは、Kreaが絵と空の吹き出しを一緒に描き、日本語だけを専用ツールで重ねます。GUIの「次の作画の吹き出し」または `manga_render(balloonMode:generated / overlay)` で方式を選べます。生成後は画像の枠に文字位置と大きさを合わせてください。枠の自動検出・自動フィットは未実装です。「吹き出しの枠」を自動／絵の枠／別描画から選べるため、二重の枠を避けて調整できます。旧画像はそのまま保持します。
+
+空吹き出しの実機試験は `node tests/live-balloons.mjs`。GemmaとKromaを読み込むので、実行前にGPU・RAM負荷を通知してください。結果は `.test-output/balloons-live-*/` に保存し、空欄・本数・文字位置を目視確認します。自動フィットや全モデルの品質保証の試験ではありません。
 
 ## 現在の状態と起動
 
@@ -45,6 +51,8 @@ DSH は空きポートで起動し、URL を表示します。自動でブラウ
 [studio.config.example.json](studio.config.example.json) を元に作成された `studio.config.json` を編集します。相対パスは設定ファイルの場所を基準にします。設定変更後は DSH を再起動してください。
 
 漫画制作の工程とモデルの役割は [漫画制作の方針](docs/manga-production-policy.md) にまとめています。エージェントは `manga_workflow_guide` で全体または必要な工程を参照できます。GPU切替を含む構成変更の設計は [常駐エージェントとGPU工程管理](docs/local-agent-architecture.md) を参照してください。
+
+単独制作は [画像制作](docs/image-production-policy.md)、[動画制作](docs/video-production-policy.md)、[LoRA制作](docs/lora-production-policy.md) に分けています。A1は `media_workflow_guide(workflow:image / video / lora)` で工程表を読み、必要な `section` だけ参照します。LoRAは素材収集→`@style` / `@chara`等と用途の設定→UNSEEN Gemmaでキャプション→検査・TXT保存→学習→生成比較の順です。Krea2学習は接続済み、H3新規学習・動画全体のキャプション・専用の自動収集は未統合です。H3を誤ってKrea2で学習しないよう、`lora_prepare(family:h3)` は実行前に拒否します。
 
 ### A1 / Gemma / Qwen
 

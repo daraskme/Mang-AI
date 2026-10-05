@@ -145,6 +145,8 @@ test('caption defaults preserve existing text, require matching dataset, and tra
   await s.captionAction('alice','edit',{id:'1',caption:'sample, a blue vase.'});
   assert.equal((await s.captionAction('alice','save')).written,3);
   const plan=await s.prepareTraining('alice',{config:{steps:1}});
+  assert.equal(plan.family,'krea2');
+  assert.equal(s.owned('alice',plan.id,'training').family,'krea2');
   assert.equal(f.requests.find(r=>r.url==='/api/training/prepare').body.config.steps,1);
   await assert.rejects(s.training('bob',plan.id,'start'),/このセッション/);
   assert.equal((await s.training('alice',plan.id,'start')).state,'running');

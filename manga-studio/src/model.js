@@ -50,7 +50,7 @@ export function replaceScript(project, pages) {
     page.letteringNeedsReview = page.bubbles.length > 0;
     for (const panel of page.panels) {
       const before = old.panels.find(p => p.id === panel.id);
-      if (before?.artPrompt === panel.artPrompt && before?.action === panel.action && old.layout === page.layout) panel.image = before.image;
+      if (before?.artPrompt === panel.artPrompt && before?.action === panel.action && old.layout === page.layout && (before.balloonMode!=='generated'||JSON.stringify(before.dialogue)===JSON.stringify(panel.dialogue))) {panel.image = before.image;if(before.balloonMode)panel.balloonMode=before.balloonMode;}
     }
     return page;
   });
@@ -62,6 +62,7 @@ export function validateBubble(b) {
   const direction = b.direction ?? 'vertical';
   if (!['vertical','horizontal'].includes(direction)) throw new Error('文字方向が不正です');
   const out = { id: text(b.id, '吹き出しID', 80), kind: b.kind, direction, text: text(b.text, '本文', 1000), speaker: typeof b.speaker === 'string' ? b.speaker.slice(0,120) : '' };
+  if(b.shape!==undefined){if(!['auto','art','overlay'].includes(b.shape))throw new Error('吹き出しの枠はauto/art/overlayです');out.shape=b.shape;}
   if (!/^[a-zA-Z0-9_-]+$/.test(out.id)) throw new Error('吹き出しIDは英数字、ハイフン、アンダースコアのみです');
   for (const [key,min,max] of [['x',0,PAGE_W],['y',0,PAGE_H],['width',60,PAGE_W],['height',60,PAGE_H],['fontSize',12,100],['tailX',0,PAGE_W],['tailY',0,PAGE_H]]) {
     const n = b[key];
@@ -83,7 +84,7 @@ export function editLettering(project, { pageId, action, bubble, id }) {
     page.bubbles = page.bubbles.filter(b => b.id !== id);
   } else if (action === 'upsert') {
     const existing = page.bubbles.find(b => b.id === bubble?.id);
-    const value = validateBubble(bubble ? {...bubble,direction:bubble.direction??existing?.direction??'vertical'} : bubble);
+    const value = validateBubble(bubble ? {...bubble,direction:bubble.direction??existing?.direction??'vertical',shape:bubble.shape??existing?.shape} : bubble);
     const index = page.bubbles.findIndex(b => b.id === value.id);
     if (index < 0) {
       if (page.bubbles.length >= 32) throw new Error('吹き出しは1ページ32個までです');

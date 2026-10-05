@@ -13,7 +13,11 @@ const staticFiles = {
   '/':['public/index.html','text/html; charset=utf-8'],
   '/editor.js':['public/editor.js','text/javascript; charset=utf-8'],
   '/style.css':['public/style.css','text/css; charset=utf-8'],
+  '/lettering-font.css':['public/lettering-font.css','text/css; charset=utf-8'],
+  '/fonts/genei-antique/GenEiAntiqueNv6-M.ttf':['public/fonts/genei-antique/GenEiAntiqueNv6-M.ttf','font/ttf'],
+  '/fonts/genei-antique/OFLicense.txt':['public/fonts/genei-antique/OFLicense.txt','text/plain; charset=utf-8'],
   '/render.js':['src/render.js','text/javascript; charset=utf-8'],
+  '/balloons.js':['src/balloons.js','text/javascript; charset=utf-8'],
   '/model.js':['src/model.js','text/javascript; charset=utf-8'],
   '/media.html':['public/media.html','text/html; charset=utf-8'],
   '/media.js':['public/media.js','text/javascript; charset=utf-8'],
@@ -70,7 +74,7 @@ export async function startEditor(service, port) {
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Cache-Control','no-store');
-    res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self' ${[...frameOrigins].join(' ')}`);
+    res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self' ${[...frameOrigins].join(' ')}`);
     const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
     try {
       if(req.headers.host!==new URL(origin).host || (req.headers.origin && req.headers.origin!==origin)) {send(403,{error:'接続元が一致しません'});return;}

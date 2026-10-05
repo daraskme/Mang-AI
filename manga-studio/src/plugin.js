@@ -8,6 +8,7 @@ import { MangaService } from './service.js';
 import { startEditor } from './editor-server.js';
 import { sessionKey } from './store.js';
 import { registerStudioTools } from './studio-tools.js';
+import { registerWorkflowGuides } from './workflow-guides.js';
 
 export const name='manga-studio';
 export const inject=['tools','systemPrompt','subprocess'];
@@ -47,6 +48,8 @@ export async function apply(ctx, options) {
     presentCall:()=>({card:'generic',title:description.split('。')[0]}),
     presentResult:(_args,result)=>({card:'generic',title:toolName,content:result.content}),
   }));
+  registerWorkflowGuides(register);
+  ctx.systemPrompt.section({name:'media-workflow-policy',order:10300,interpolate:false,text:'単独画像・動画・LoRA制作の着手時はmedia_workflow_guide(workflow:image/video/lora)でoverviewを読む。工程変更時に必要なsectionだけ読み、完了の証拠を確認して次へ進む。画像/動画はモデルとLoRAを選択→Gemmaでプロンプト保存→生成→確認・修正→仕上げ・保存。LoRAはfamilyとmode/triggerを固定→素材収集→UNSEEN Gemmaで画像キャプション→検査・TXT保存→学習→評価・登録。H3新規学習と動画全体のキャプションは未統合。H3をKrea学習で代用しない。手順や準備だけの依頼では生成・学習を開始しない。'});
   const mangaPolicy=await readFile(join(packageRoot,'docs/manga-production-policy.md'),'utf8');
   register('manga_workflow_guide','漫画制作の方針を読む。着手時・工程変更時に、設定→ページ配分→Gemmaの構造化プロンプト→指定LoRAで作画→修正と文字入力の順と担当を確認する。',{
     section:{type:'string',enum:['all','settings','pages','prompts','generate','revise','save','gpu'],description:'必要な工程だけ読む。省略時all'},
@@ -83,7 +86,7 @@ export async function apply(ctx, options) {
   register('manga_letter','専用の吹き出し・文字入力ツール。漫画の台詞は基本縦書き（上から下、列は右から左）。作画プロンプトへ文字を含めない。verticalizeはこのページの通常・思考の吹き出しを一括で縦書きにする。座標は1000×1414。',{
     revision:number('現在の revision'),pageId:string('p1 など'),action:{type:'string',enum:['upsert','delete','verticalize'],required:true},id:string('delete 時の吹き出しID',false),
     bubble:{type:'object',additionalProperties:false,properties:{
-      id:string('英数字の吹き出しID'),text:string('画像に重ねる日本語本文'),speaker:string('話者',false),kind:{type:'string',enum:['speech','thought','caption','text'],required:true},direction:{type:'string',enum:['vertical','horizontal'],description:'新規は省略すると縦書き。更新時の省略は現在の方向を保持。通常はvertical、横書きが必要な箇所だけhorizontal'},
+      id:string('英数字の吹き出しID'),text:string('画像に重ねる日本語本文'),speaker:string('話者',false),kind:{type:'string',enum:['speech','thought','caption','text'],required:true},shape:{type:'string',enum:['auto','art','overlay'],description:'autoは空吹き出し生成済みコマで文字だけ表示。artは常に画像内の枠へ文字だけ、overlayは編集可能な枠と尾を描く。画像の吹き出しに合わせて位置とサイズを調整'},direction:{type:'string',enum:['vertical','horizontal'],description:'新規は省略すると縦書き。更新時の省略は現在の方向を保持。通常はvertical、横書きが必要な箇所だけhorizontal'},
       ...Object.fromEntries(['x','y','width','height','fontSize','tailX','tailY'].map(k=>[k,{type:'number',required:true,description:k==='fontSize'?'12〜100。通常26〜34':`ページ上の ${k}`}]))},description:'upsert時に必要。x,y は左上。尾の先端が tailX,tailY'},
   },(args,exec)=>{const result=service.letter(exec.agent.id,args),p=result.project;return {project:{id:p.id,revision:p.revision},pageId:args.pageId,bubbles:p.pages.find(page=>page.id===args.pageId).bubbles,warnings:result.warnings};});
   register('manga_open_editor','このセッションの吹き出し・文字編集画面を開くための URL を返す。脚本の確認・確定もこの画面で行う。',{},(_args,exec)=>{
@@ -91,6 +94,7 @@ export async function apply(ctx, options) {
   });
   register('manga_render','確定済みの1ページをローカル Krea 2 公式 Python で作画する。GPUキューへ入れ、すぐジョブIDを返す。既存画像は既定で再生成しない。',{
     pageId:string('p1 など'),seed:number('0〜2147483647',false),regenerate:{type:'boolean',description:'明示的な再作画時だけ true'},
+    balloonMode:{type:'string',enum:['generated','overlay'],description:'既定generated：絵と空の吹き出しを一緒に描き、文字だけ別入力。overlay：絵には枠を描かず専用ツールで枠も重ねる。生成後に文字位置を確認'},
     model_id:string('media_status の KreaモデルID。Kroma は kroma-v03-turbo',false),preset:{type:'string',enum:['turbo8','fast4','raw'],description:'Kromaはturbo8を指定'},
     loras:{type:'array',description:'追加するLoRA。省略時は既定、空配列でなし',items:{type:'object',additionalProperties:false,properties:{id:string('LoRA ID'),weight:{type:'number',description:'通常0〜1。0.6など小数も指定可能'},enabled:{type:'boolean'}}}},
   },async(args,exec)=>({job:await service.render(exec.agent.id,args),poll:{tool:'manga_status',arguments:{detail:'progress'}},note:'漫画専用ジョブです。状態はmanga_statusで確認します。'}));
@@ -112,6 +116,7 @@ export async function apply(ctx, options) {
   ctx.systemPrompt.section({name:'resource-notice',order:20001,interpolate:false,text:'利用者の希望：GPUやRAMへ大きな負荷をかける生成・学習・大規模モデル読込の前に、実行する内容と負荷の見込みを短く日本語で知らせる。既に依頼されている処理は、通知のためだけに承認を再要求しない。負荷の数値が不明なら推測値を断定しない。'});
   ctx.systemPrompt.section({name:'media-startup',order:10304,interpolate:false,text:'media_service / media_status がready:false,status:startingなら生成環境は起動準備中。media_statusが準備完了を返すまで生成・再起動を繰り返さず、このツールで待つ。依存環境の初回取得は数分かかる場合がある。漫画の作画待ちにはmanga_status(detail:progress)を使う。'});
   ctx.systemPrompt.section({name:'manga-vertical-lettering',order:10301,interpolate:false,text:'漫画の日本語の台詞は基本縦書き。manga_letterの新規入力はdirection:verticalを使い、上から下・右の列から左の列へ読む。改行は次の左列へ送る。横書きは利用者が指定した箇所や横組みの看板等に限る。既存ページの台詞を縦書きへ変更する指示にはmanga_letter(action:verticalize)を使える。文字や画像を再生成せず、縦組みで溢れた場合は吹き出しの高さ・幅・文字サイズを調整する。'});
+  ctx.systemPrompt.section({name:'manga-generated-balloons',order:10302,interpolate:false,text:'漫画の作画は既定でballoonMode:generated。Kreaが絵と空の吹き出しを描き、日本語はmanga_letterで後から重ねる。生成前に台詞の本数・話者・配置を確定する。生成後は絵の空吹き出しを確認し、文字のx/y/width/height/fontSizeを合わせる。shape:autoは生成済みの枠を使い二重の枠を描かない。自動判定が合わないときshape:artで文字だけ、枠を別描画するならoverlay。枠や尾は画像に含まれるため文字ツールでは動かせない。旧画像へは自動で空吹き出しを追加しない。'});
   register('media_open_gallery','データセット、全セッションの制作中の漫画、生成画像・動画を閲覧するメディアギャラリーを開く。キャプション確認と編集再開ができる。',{},(_a,e)=>({url:editor.galleryUrl(sessionKey(e.agent.id),e.agent.id)}));
   ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_GALLERY__',value:editor.galleryUrl(sessionKey('gallery'),'gallery')}));
   ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_PROGRESS__',value:editor.progressUrl(sessionKey('gallery'),'gallery')}));

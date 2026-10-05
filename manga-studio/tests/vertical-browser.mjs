@@ -23,6 +23,11 @@ try {
   await page.locator('#selection').selectOption('b-test');
   assert.equal(await page.locator('#direction').inputValue(),'vertical');
   await page.evaluate(()=>document.fonts.ready);
+  const cdp=await page.context().newCDPSession(page);await cdp.send('DOM.enable');await cdp.send('CSS.enable');
+  const rootNode=await cdp.send('DOM.getDocument');
+  const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:rootNode.root.nodeId,selector:'[data-bubble="b-test"] text'});
+  const {fonts}=await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
+  assert(fonts.some(font=>font.isCustomFont&&font.familyName.includes('GenEi Antique')),'Dialogue must actually render with the bundled font');
   const geometry=await page.locator('[data-bubble="b-test"] text').evaluateAll(nodes=>nodes.map(n=>({
     text:n.textContent,x:Number(n.getAttribute('x')),mode:getComputedStyle(n).writingMode,
     glyphs:Array.from({length:n.getNumberOfChars()},(_,i)=>{const r=n.getExtentOfChar(i);return {x:r.x+r.width/2,y:r.y+r.height/2};}),
@@ -45,7 +50,19 @@ try {
     const event=page.waitForEvent('download');await page.locator('#'+id).click();await(await event).saveAs(join(out,name));
   }
   const svg=await readFile(join(out,'vertical-page.svg'),'utf8');assert(svg.includes('writing-mode:vertical-rl'));assert(svg.includes('冷めるよ。」'));
+  assert(svg.includes('data:font/ttf;base64,'));assert(svg.includes('SIL OPEN FONT LICENSE Version 1.1'));
+  const standalone=await browser.newPage();await standalone.goto('file://'+join(out,'vertical-page.svg'));await standalone.evaluate(()=>document.fonts.ready);
+  assert(await standalone.evaluate(()=>document.fonts.check('36px "GenEi Antique v6"')),'Export must carry its own font');
+  await standalone.locator('[data-bubble="b-test"]').screenshot({path:join(out,'vertical-export-font.png')});await standalone.close();
   const png=await readFile(join(out,'vertical-page.png'));assert.equal(png.readUInt32BE(16),2000);assert.equal(png.readUInt32BE(20),2828);
+  assert.equal(await page.locator('#balloonMode').inputValue(),'generated');
+  await page.locator('#selection').selectOption('b-test');await page.locator('#shape').selectOption('art');
+  assert.equal(await page.locator('[data-bubble="b-test"] ellipse').count(),0);
+  assert.equal(await page.locator('[data-bubble="b-test"] text').count(),3);
+  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('保存しました'));
+  await page.reload();await page.locator('#selection').selectOption('b-test');assert.equal(await page.locator('#shape').inputValue(),'art');
+  await page.locator('#shape').selectOption('overlay');assert.equal(await page.locator('[data-bubble="b-test"] ellipse').count(),1);
+  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('保存しました'));
   await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.deepEqual(errors,[]);console.log('PASS vertical dialogue: defaults, downward glyphs, right-to-left columns, page conversion, reload, SVG/PNG exports');
 } finally {await browser.close();await editor.close();await service.close();await rm(root,{recursive:true,force:true});}

@@ -104,7 +104,7 @@ export class MediaEdits {
     const image=`images/${panel.id}-${randomUUID()}.png`;
     await copyFile(this.path(owner,asset),join(this.store.directory(owner),image));
     if(this.get(owner,assetId).revision!==revision)throw new Error('編集内容が変わっています。再読み込みしてください');
-    const updated=this.store.update(owner,p.revision,state=>getPage(state,asset.panel.pageId).panels.find(x=>x.id===panel.id).image=image);
+    const updated=this.store.update(owner,p.revision,state=>{const page=getPage(state,asset.panel.pageId),target=page.panels.find(x=>x.id===panel.id);target.image=image;if(target.balloonMode==='generated')page.letteringNeedsReview=true;});
     asset.panel.sourceImage=image;asset.revision++;this.put(owner,'edit-asset',asset);
     return {project:updated,asset,outputPath:join(this.store.directory(owner),image)};
   }

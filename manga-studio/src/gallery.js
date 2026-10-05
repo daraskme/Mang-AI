@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {readdir,readFile,stat,realpath,mkdir,rename,unlink} from 'node:fs/promises';
 import {join,resolve,extname,dirname,relative,sep} from 'node:path';
 import {pageSVG} from './render.js';
+import {embeddedLetteringFont} from './lettering-font.js';
 
 const images=new Set(['.png','.jpg','.jpeg','.webp','.bmp','.avif']),videos=new Set(['.mp4','.webm','.mov','.mkv']);
 const digest=x=>createHash('sha256').update(x).digest('hex').slice(0,32);
@@ -64,7 +65,7 @@ export class MediaGallery {
   }
   get(id){const a=this.assets.get(id);if(!a)throw Error('一覧を更新してメディアを選び直してください');return a;}
   async detail(id){const a=this.get(id);let caption=a.caption||'';if(a.file){const sidecar=a.file.slice(0,-extname(a.file).length)+'.txt',path=await realpath(sidecar).catch(()=>null);if(path&&inside(a.root,path)&&(await stat(path)).size<128000)caption=await readFile(path,'utf8');}const {root,...safe}=a;return {...safe,caption};}
-  async page(asset){const p=this.service.store.get(asset.projectId),page=p.pages.find(x=>x.id===asset.pageId);if(!page)throw Error('ページが更新されました');const images={};for(const panel of page.panels)if(panel.image)images[panel.id]=`data:image/png;base64,${(await this.service.readImage(p.id,panel.image)).toString('base64')}`;return pageSVG(page,images);}
+  async page(asset){const p=this.service.store.get(asset.projectId),page=p.pages.find(x=>x.id===asset.pageId);if(!page)throw Error('ページが更新されました');const images={};for(const panel of page.panels)if(panel.image)images[panel.id]=`data:image/png;base64,${(await this.service.readImage(p.id,panel.image)).toString('base64')}`;return pageSVG(page,images,false,await embeddedLetteringFont());}
   async file(id,thumbnail=false){
     const a=this.get(id);if(a.kind==='page')return {bytes:Buffer.from(await this.page(a)),type:'image/svg+xml'};
     const resolved=await realpath(a.file);if(!inside(a.root,resolved))throw Error('参照先が変更されました');

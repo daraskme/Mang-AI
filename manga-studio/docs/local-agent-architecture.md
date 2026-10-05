@@ -20,6 +20,8 @@
 
 漫画の詳細な制作方針は [manga-production-policy.md](manga-production-policy.md) を正本とする。全体設定と場所の連続性、ページ配分、構造化プロンプト、指定LoRA、修正と縦書き文字入力をこの順に扱う。
 
+単独の [画像](image-production-policy.md)・[動画](video-production-policy.md)・[LoRA](lora-production-policy.md) は `media_workflow_guide` で工程ごとに読む。A1のシステム指示からこの入口へ案内する。素材収集と動画の時間変化のキャプション、H3新規学習は今後の接続範囲として明記し、Krea2学習のfamily検査で取り違えを防ぐ。
+
 漫画：依頼整理 → 人物・場面・読み順 → 字コンテ → コマ割り・ネーム → レビュー・脚本確定 → Gemmaの作画プロンプト → モデル/LoRA選択 → Krea作画 → 縦書きの文字配置 → PNG確認 → 修正 → 書き出し。
 
 動画：依頼整理 → 人物・開始/終了状態 → ショット計画 → Gemmaの自然言語プロンプト → モデル/LoRA選択 → H3生成 → 連続性確認 → 必要なHires・修正 → 書き出し。

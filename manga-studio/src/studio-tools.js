@@ -28,7 +28,7 @@ export function registerStudioTools(register,studios) {
   },(a,e)=>studios.generate(e.agent.id,'krea',a,e.signal));
   register('h3_generate','MiniMax H3 で動画・音声を生成し、すぐジョブIDを返す。画像から動画を作る場合は firstFramePath に画像パスを指定できる。',{
     projectTitle:string('動画作品名。同じ作品のショット・修正版をまとめる',false),collectionId:string('既存の動画作品ID',false),
-    memory_profile:{type:'string',enum:['auto','resident','shared','low_memory'],description:'Qwenとの併用はshared（TEをINT4）。生成モデルだけを使う場合はresident（TEをINT8）'},
+    memory_profile:{type:'string',enum:['auto','resident','shared','low_memory'],description:'A1常駐下の既定はshared（TEをINT4）。residentはTEをINT8で保持。gpu_statusで空きを確認する'},
     prompt:string('動き、被写体、カメラ、音などの生成指示'),model:string('media_status のモデル相対パス。既定 MiniMax-H3',false),width:integer('出力幅'),height:integer('出力高さ'),frames:integer('124〜345。24fps、17k+5へ調整される'),seed:integer('乱数seed'),steps:integer('ステップ数'),preset:{type:'string',enum:['balanced','quality','turbo8','turbo4']},attention:{type:'string',enum:['sage','sdpa']},latent_refine:object('Hires: {enabled:true,model:一覧の潜在upscaler,scale:1.5,strength:0.18,steps:4}。width/heightは仕上がり寸法'),firstFramePath:string('先頭画像の絶対パス',false),lastFramePath:string('末尾画像の絶対パス',false),loras,
   },(a,e)=>studios.generate(e.agent.id,'h3',a,e.signal));
   register('media_job','このセッションから投入した画像・動画ジョブの進捗・結果URLを取得、または中止する。',{id:string('krea_generate / h3_generate の id'),action:{type:'string',enum:['status','cancel']}},(a,e)=>studios.job(e.agent.id,a.id,a.action,e.signal));
@@ -44,8 +44,8 @@ export function registerStudioTools(register,studios) {
   },(a,e)=>studios.captionAction(e.agent.id,'edit',a,e.signal));
   register('caption_save','下書きを画像と同名の .txt へ保存する。既存 .txt はバックアップし、外部変更がある場合は上書きしない。',{ids},(a,e)=>studios.captionAction(e.agent.id,'save',a,e.signal));
   register('caption_cancel','現在のセッションのキャプション生成を中止する。保存済みの下書きは残す。',{},(a,e)=>studios.captionAction(e.agent.id,'stop',a,e.signal));
-  register('lora_prepare','キャプション・トリガー・GPU・RAWモデルを検査し、画像数と用途から LoRA 学習設定を作る。返された設定と警告を確認して lora_run で開始する。',{
-    ids,config:object('推奨設定の上書き。steps,rank,alpha,resolution,learningRate,batchSize,saveEvery,fp8,blocksToSwap 等'),
+  register('lora_prepare','Krea2のキャプション・トリガー・GPU・RAWモデルを検査し、LoRA学習設定を作る。H3学習は未統合で準備を拒否する。返された設定と警告を確認して lora_run で開始する。',{
+    family:{type:'string',enum:['krea2','h3'],description:'学習先。省略時krea2。h3は未統合のため実行しない'},ids,config:object('推奨設定の上書き。steps,rank,alpha,resolution,learningRate,batchSize,saveEvery,fp8,blocksToSwap 等'),
   },(a,e)=>studios.prepareTraining(e.agent.id,a,e.signal));
   register('lora_run','このセッションで用意した Krea 2 LoRA 学習を開始・進捗取得・停止する。start は利用者が学習を依頼した場合に使用する。',{
     id:string('lora_prepare の id'),action:{type:'string',enum:['start','status','stop'],required:true},

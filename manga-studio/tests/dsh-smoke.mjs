@@ -36,6 +36,7 @@ const server=createServer(async(req,res)=>{
     }
     assert.equal(input.stream,true);
     assert(input.tools.some(t=>t.function?.name==='manga_letter'));
+    assert(input.tools.some(t=>t.function?.name==='media_workflow_guide'));
     assert.equal(input.tools.find(t=>t.function?.name==='manga_render').function.parameters.properties.loras.items.properties.weight.type,'number');
     for(const name of ['krea_generate','h3_generate','media_job','caption_open','caption_generate','caption_save','lora_prepare','lora_run','lora_install','media_open_editor','media_edit','media_edit_status','media_edit_cancel','media_edit_commit'])assert(input.tools.some(t=>t.function?.name===name),`Missing DSH tool: ${name}`);
     const last=input.messages.filter(m=>m.role==='tool').at(-1),value=unpack(last);
@@ -67,6 +68,8 @@ const server=createServer(async(req,res)=>{
     else if(testService&&step===7)call=['media_service',{provider:'krea',action:'start'}];
     else if(testService&&step===8){assert.equal(value?.action,'start',JSON.stringify(last));call=['media_service',{provider:'krea',action:'stop'}];}
     else if(testService&&step===9)assert.equal(value?.action,'stop',JSON.stringify(last));
+    else if(!testEditing&&!testService&&step===7)call=['media_workflow_guide',{workflow:'lora',section:'train'}];
+    else if(!testEditing&&!testService&&step===8){assert.equal(value?.workflow,'lora');assert.match(value?.policy||'',/H3.*未統合/);}
     res.setHeader('Content-Type','text/event-stream');
     const content=call?{role:'assistant',tool_calls:[{index:0,id:`call_${step}_${results.length}`,type:'function',function:{name:call[0],arguments:JSON.stringify(call[1])}}]}:{role:'assistant',content:'DSH_MANGA_SMOKE_OK'};
     const envelope={id:'test',object:'chat.completion.chunk',created:1,model:'fake-qwen'};

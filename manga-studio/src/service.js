@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { Store, sessionKey, scriptDigest } from './store.js';
 import { editLettering, getPage, integer, normalizeScript, replaceScript, text, LAYOUTS } from './model.js';
 import { pageSVG, letteringWarnings, escapeXML } from './render.js';
+import { embeddedLetteringFont } from './lettering-font.js';
+import { balloonInstruction } from './balloons.js';
 import { writeScript } from './creative.js';
 import { packageRoot } from './config.js';
 import { LocalStudios } from './local-studios.js';
@@ -84,12 +86,13 @@ export class MangaService {
       for(const page of p.pages) page.letteringNeedsReview=false;
     });
   }
-  async render(session,{pageId,regenerate=false,seed=0,model_id,preset,loras}) {
+  async render(session,{pageId,regenerate=false,seed=0,model_id,preset,loras,balloonMode='generated'}) {
     if(this.closed) throw new Error('Studio は終了中です');
     const p=this.store.get(sessionKey(session)), page=getPage(p,pageId);
     if(p.production && (!p.production.pages||!p.production.prompts?.[pageId]))throw Error('設定またはページ配分が変更されています。このページのプロンプトをGemmaで更新してください');
     if(p.approved!==scriptDigest(p)) throw new Error('編集画面で脚本を確認し「脚本を確定」を押してください');
     integer(seed,'seed',0,2147483647);
+    if(!['generated','overlay'].includes(balloonMode))throw Error('balloonModeはgeneratedまたはoverlayです');
     if(this.store.jobs(p.id).some(j=>j.pageId===pageId && ['queued','running'].includes(j.status))) throw new Error('このページは生成中です。manga_status で進捗を確認してください');
     const panels=page.panels.filter(panel=>regenerate || !panel.image);
     if(!panels.length) throw new Error('全コマの画像があります。再生成する場合だけ regenerate=true を指定してください');
@@ -105,7 +108,7 @@ export class MangaService {
       if(!k.weights) throw new Error(`${k.checkpoint==='oss_raw'?'OSS_RAW':'OSS_TURBO'} または krea.weights に重みのパスを設定してください`);
       await Promise.all([access(join(k.repo,'inference.py')),access(k.python),access(k.weights)]);
     }
-    const job={id:randomUUID(),project:p.id,pageId,status:'queued',createdAt:new Date().toISOString(),digest:scriptDigest(p),panels:panels.map(x=>x.id),completed:[],seed,generation,error:null};
+    const job={id:randomUUID(),project:p.id,pageId,status:'queued',createdAt:new Date().toISOString(),digest:scriptDigest(p),panels:panels.map(x=>x.id),completed:[],seed,generation,balloonMode,error:null};
     this.store.saveJob(job);
     const controller=new AbortController();
     this.live.set(job.id,controller);
@@ -124,14 +127,15 @@ export class MangaService {
       const [, ,w,h]=LAYOUTS[page.layout][page.panels.findIndex(p=>p.id===panel.id)];
       const scale=Math.min(k.width/w,k.height/h);
       const fixed=visualContinuity(project,page,panel);
-      const prompt=`${project.style}\n${fixed||'Character consistency notes: '+project.characters}\n${panel.artPrompt}\nOne single manga panel. Artwork only, no lettering, no speech bubbles, no captions, no written words, no watermark. Leave breathing room for separate lettering.`;
+      const artPrompt=job.balloonMode==='generated'?panel.artPrompt.replace(/no speech bubbles/gi,'empty speech balloons without lettering'):panel.artPrompt;
+      const prompt=`${project.style}\n${fixed||'Character consistency notes: '+project.characters}\n${artPrompt}\nOne single manga panel. ${balloonInstruction(page,panel,job.balloonMode)}`;
       if(k.backend==='studio'&&prompt.length>4000)throw Error(`${panel.id}の設定と作画指示がKreaの4000文字上限を超えています。固定外見を保ってGemmaで簡潔にしてください`);
       return {id:panel.id,output:join(dir,`${panel.id}-${job.id}.png`),seed:(job.seed+i)%2147483648,
         width:Math.max(256,Math.round(w*scale/16)*16),height:Math.max(256,Math.round(h*scale/16)*16),
         prompt};
     });
     const request={...k,panels:requests};
-    job.outputs=requests.map(req=>({id:req.id,image:`images/${req.id}-${job.id}.png`}));
+    job.outputs=requests.map(req=>({id:req.id,image:`images/${req.id}-${job.id}.png`,balloonMode:job.balloonMode}));
     this.store.saveJob(job);
     const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(k.timeoutMs)]);
     let outcome, failure;
@@ -180,7 +184,8 @@ export class MangaService {
     }
     if(fresh && completed.length) this.store.update(job.project,current.revision,p=>{
       const target=getPage(p,page.id);
-      for(const image of completed) target.panels.find(panel=>panel.id===image.id).image=image.image;
+      for(const image of completed)Object.assign(target.panels.find(panel=>panel.id===image.id),{image:image.image,balloonMode:job.balloonMode||'overlay'});
+      if(job.balloonMode==='generated')target.letteringNeedsReview=true;
     });
     job.completed=completed.map(x=>x.id);
     job.status=!fresh?'superseded':controller.signal.aborted?'canceled':signal.aborted?'failed':failure||completed.length!==requests.length?'failed':'completed';
@@ -202,12 +207,14 @@ export class MangaService {
     return this.progress.track(p.id,'export',async()=>{
     const dir=join(this.store.directory(p.id),'exports',`r${p.revision}-${randomUUID().slice(0,8)}`);
     await mkdir(dir,{recursive:true});
+    const font=await embeddedLetteringFont();
+    await writeFile(join(dir,'FONT-LICENSE.txt'),font.license,'utf8');
     const files=[];
     for(const [i,page] of p.pages.entries()) {
       const images={};
       for(const panel of page.panels) if(panel.image) images[panel.id]=`data:image/png;base64,${(await this.readImage(p.id,panel.image)).toString('base64')}`;
       const filename=`page-${String(i+1).padStart(3,'0')}.svg`;
-      await writeFile(join(dir,filename),pageSVG(page,images),'utf8'); files.push(filename);
+      await writeFile(join(dir,filename),pageSVG(page,images,false,font),'utf8'); files.push(filename);
     }
     const html=`<!doctype html><html lang="ja"><meta charset="utf-8"><title>${escapeXML(p.title)}</title><style>body{margin:0;background:#28282a;color:white;font:16px sans-serif}header{padding:24px}main{max-width:900px;margin:auto}img{display:block;width:100%;margin-bottom:24px}a{color:#dac8a1}@media print{@page{size:A5;margin:0}header{display:none}body{background:white}img{height:100vh;width:100%;object-fit:contain;break-after:page;margin:0}}</style><header><h1>${escapeXML(p.title)}</h1><p>全${p.pages.length}ページ · 印刷からPDF保存できます</p><a href="project.json">編集データ</a></header><main>${files.map(f=>`<img src="${f}" alt="${f}">`).join('')}</main></html>`;
     await writeFile(join(dir,'index.html'),html,'utf8');
