@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { packageRoot } from './config.js';
 import { letteringWarnings } from './render.js';
 import { MediaGallery } from './gallery.js';
+import { sessionKey } from './store.js';
 
 const staticFiles = {
   '/':['public/index.html','text/html; charset=utf-8'],
@@ -22,6 +23,13 @@ const staticFiles = {
   '/gallery.html':['public/gallery.html','text/html; charset=utf-8'],
   '/gallery.js':['public/gallery.js','text/javascript; charset=utf-8'],
   '/gallery.css':['public/gallery.css','text/css; charset=utf-8'],
+  '/progress.html':['public/progress.html','text/html; charset=utf-8'],
+  '/progress.js':['public/progress.js','text/javascript; charset=utf-8'],
+  '/progress.css':['public/progress.css','text/css; charset=utf-8'],
+  '/workspace.html':['public/workspace.html','text/html; charset=utf-8'],
+  '/workspace.js':['public/workspace.js','text/javascript; charset=utf-8'],
+  '/workspace.css':['public/workspace.css','text/css; charset=utf-8'],
+  '/navigation.js':['public/navigation.js','text/javascript; charset=utf-8'],
 };
 async function streamFile(req,res,file) {
   res.setHeader('Content-Type',file.type);
@@ -53,12 +61,13 @@ export async function startEditor(service, port) {
   const generationSessions=new Map();
   const gallery=new MediaGallery(service),gallerySessions=new Map();
   let origin;
+  const frameOrigins=new Set();
   const galleryUrl=(id,session)=>{gallerySessions.set(id,session);return `${origin}/gallery.html#project=${id}&token=${token('gallery:'+id)}`;};
   const server=createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Cache-Control','no-store');
-    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self' ${[...frameOrigins].join(' ')}`);
     const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
     try {
       if(req.headers.host!==new URL(origin).host || (req.headers.origin && req.headers.origin!==origin)) {send(403,{error:'接続元が一致しません'});return;}
@@ -73,7 +82,16 @@ export async function startEditor(service, port) {
         const verb=action.slice(8),expected=token('gallery:'+id);
         const supplied=credential||(req.method==='GET'&&/^(file|thumb)\/[a-f0-9]{32}$/.test(verb)?url.searchParams.get('token')||'':'');
         if(!gallerySessions.has(id)||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){send(401,{error:'Mang-AIのメディアギャラリーから開いてください'});return;}
-        if(req.method==='GET'&&verb==='collections'){send(200,{items:await gallery.catalog()});return;}
+        const session=url.searchParams.get('session'),sessionId=session?sessionKey(session):null;
+        if(req.method==='GET'&&verb==='collections'){const items=await gallery.catalog();send(200,{items:sessionId?items.filter(c=>c.id==='p-'+sessionId||c.id==='s-'+sessionId):items});return;}
+        if(req.method==='GET'&&verb==='progress'){send(200,{items:sessionId?(service.store.find(sessionId)?[service.progress.snapshot(sessionId)]:[]):service.progress.list()});return;}
+        if(req.method==='GET'&&verb==='workspace'){
+          const p=sessionId?service.store.find(sessionId):null;
+          send(200,{title:p?.title||(session?'このセッション':'メディアライブラリ'),editorUrl:p?`${origin}/#project=${p.id}&token=${token(p.id)}`:null});return;
+        }
+        if(req.method==='POST'&&verb==='progress-open'){
+          const {projectId}=await jsonBody(req);service.store.get(projectId);send(200,{url:`${origin}/#project=${projectId}&token=${token(projectId)}`});return;
+        }
         if(req.method==='GET'&&verb==='items'){send(200,await gallery.list(url.searchParams.get('collection'),{offset:Number(url.searchParams.get('offset')||0),limit:48,query:url.searchParams.get('query')||''}));return;}
         const asset=/^(detail|file|thumb)\/([a-f0-9]{32})$/.exec(verb);
         if(req.method==='GET'&&asset){if(asset[1]==='detail')send(200,await gallery.detail(asset[2]));else await streamFile(req,res,await gallery.file(asset[2],asset[1]==='thumb'));return;}
@@ -144,6 +162,7 @@ export async function startEditor(service, port) {
         return;
       }
       const p=service.store.get(id);
+      if(req.method==='GET'&&action==='progress'){send(200,{items:[service.progress.snapshot(id)]});return;}
       if(req.method==='GET' && !action) {send(200,{project:p,jobs:service.store.jobs(id),warnings:letteringWarnings(p)});return;}
       if(req.method==='GET' && action==='models') {
         if(service.config.krea.backend!=='studio')throw new Error('モデル選択には Krea Studio 接続が必要です');
@@ -175,6 +194,9 @@ export async function startEditor(service, port) {
     mediaUrl: (id,asset)=>`${origin}/media.html#project=${id}&asset=${asset}&token=${token(id)}`,
     generationUrl: (id,session)=>{generationSessions.set(id,session);return `${origin}/generate.html#project=${id}&token=${token(id)}`;},
     galleryUrl,
+    progressUrl:(id,session)=>galleryUrl(id,session).replace('/gallery.html#','/progress.html#'),
+    workspaceUrl:(id,session)=>galleryUrl(id,session).replace('/gallery.html#','/workspace.html#'),
+    allowFrameOrigin:value=>{const u=new URL(value);if(u.protocol!=='http:'||!['127.0.0.1','localhost'].includes(u.hostname))throw Error('統合画面の接続先はローカルGUIに限ります');frameOrigins.add(u.origin);},
     origin,
     close:()=>{gallery.close();return new Promise((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeIdleConnections();});},
   };

@@ -2,6 +2,12 @@
 
 DeepSeek Harness を漫画制作向けに拡張するプラグインです。DSH の1セッションを1作品に対応させ、脚本、コマ画像、吹き出し、日本語文字、編集履歴を保存します。
 
+[機能・モデル・LoRA学習の確認結果（2026-10-05）](docs/feature-audit-2026-10-05.md) に、実装済み機能と未検証・未統合の範囲をまとめています。Krea 2の新規LoRA学習は対応済み、H3の新規LoRA学習は未統合です。
+
+セッション上部の **メディア** またはサイドバーの **ギャラリー** で、チャットの横に制作スペースを開きます。**このセッション／すべての素材** を切り替え、プレビューから同じ画面内で漫画・画像の編集を再開できます。幅の調整・全画面化にも対応し、セッションを切り替えても訪問済みパネルの未保存編集を保持します。別の編集対象への移動時は未保存の文字・マスクがあれば保存・処理を促します。
+
+制作スペースの **制作の進捗** では選択したセッションを、セッション未選択時には全漫画を確認できます。漫画編集画面にも脚本・台詞・作画・画像修正・書き出しの状況を表示し、2秒ごとに更新します。作画中は生成済みコマ数と生成環境が返す処理状況、失敗時はエラーを表示します。文字の未保存編集を進捗更新で上書きしません。
+
 | 担当 | 使用するもの |
 |---|---|
 | 日本語脚本・台詞 | Gemma Ortenzya 31B のローカル OpenAI 互換 API |
@@ -70,7 +76,7 @@ Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell�
 
 ## メディアギャラリーと整理済み素材
 
-サイドバーの **ギャラリー**、生成画面の **メディアギャラリー**、漫画編集画面の **ギャラリー**から開きます。エージェント用ツールは `media_open_gallery` です。
+サイドバーの **ギャラリー** とセッション上部の **メディア** は統合パネルを開きます。生成画面・単独編集画面のリンクとエージェント用の `media_open_gallery` からは独立画面も利用できます。
 
 - 制作中の漫画：全セッションの作品を選び、現在のページを吹き出し付きで確認。「漫画の編集を再開」で選択ページへ戻れます。
 - セッションのメディア：生成・編集した画像と動画をセッション別に表示します。
@@ -265,6 +271,8 @@ Krea ジョブは全セッションで直列実行します。`manga_cancel` ま
 
 ## 検証と対応版
 
+`node_modules/.bin/node tests/workspace-browser.mjs` は統合画面の作品絞り込み、全素材表示、未保存編集の保持と移動保護、進捗、空のセッション、モバイル表示を検証します。`TEST_URL='<起動中DSHのURL>' node_modules/.bin/node tests/workspace-dsh-browser.mjs` は通常GUIでチャット横のパネルとセッション切替を確認します。実モデルを読み込まず、後者もテスト入力を保存しません。
+
 ```bash
 npm test
 npm run test:browser
@@ -277,6 +285,26 @@ python3 tests/test_python_bridge.py
 KromaのGUI選択は `node_modules/.bin/node tests/kroma-browser.mjs`（Kreaサーバー起動済み、生成なし）。実モデルの生成とHiresは `tests/live-kroma.mjs`（GPUを使用、実行前に通知）。`TEST_STYLE_LORA=1` で整理済み漫画スタイルLoRAも使います。`TEST_SERVICE=1 node_modules/.bin/node tests/dsh-smoke.mjs` は実DSHの管理プロセスでKreaサーバーを起動・停止しますが、モデルは読み込みません。
 
 縦書きは `node_modules/.bin/node tests/vertical-browser.mjs` で、文字の上下方向・列の右左順・一括変更・保存後の復元・SVG/PNG書き出しを確認します。GPU生成やモデル読み込みは行いません。
+
+実際の漫画制作は `tests/live-manga-workflow.mjs` で検証できます。通常の漫画ライブラリーへ新しい作品を保存するため、通常GUIを終了してから実行します。`author` と `render` は実モデルをロードしGPU・RAMを使います。実行前に利用者へ通知してください。
+
+```bash
+node_modules/.bin/node tests/live-manga-workflow.mjs author
+# 表示された実行ディレクトリを、以下の <run-dir> に指定
+node_modules/.bin/node tests/live-manga-workflow.mjs approve <run-dir>
+node_modules/.bin/node tests/live-manga-workflow.mjs render <run-dir>
+# 必要な場合、目視で選んだ範囲を repairs.json に保存して実画像の補完も検証
+node_modules/.bin/node tests/live-manga-workflow.mjs repair <run-dir>
+node_modules/.bin/node tests/live-manga-workflow.mjs finish <run-dir>
+```
+
+Qwenエージェント→Gemma脚本→縦書き吹き出し→ブラウザで脚本確定→Kroma＋漫画LoRA強度0.6で3コマ生成→手動位置調整・保存・再読込→PNG/SVG/HTML出力→ギャラリー表示→編集再開を確認します。再生成を明示する場合だけ `render <run-dir> --regenerate` を使います。出力PNGは2000×2828で、元画像・過去の保存版も残ります。動作確認後も画面と画像の目視確認は必要です。
+
+`repair` はCPU/RAMを使うIOPaintの実処理です。`repairs.json` は `[{"panelId":"p1-c1","regions":[{"x":10,"y":10,"width":100,"height":100}]}]` の形で、確認した元画像のピクセル座標を指定します。元画像保持とGUIからの漫画反映を検証します。`tests/progress-browser.mjs` は模擬ジョブの開始・失敗・完了、未保存台詞の保持、モバイルの進捗表示をモデル読込なしで検証します。
+
+ローカル32Kコンテキスト用に、会話要約の出力枠・保持量を調整しています。要約時は巨大なツール一覧・通常のシステム指示を再送せず、会話履歴からチェックポイントを作ります。通常のエージェント実行では元の指示とツール一覧を維持します。作画待ちは `manga_status(detail:progress)`、台詞編集の応答は対象ページの吹き出しだけを返し、同じ脚本の再送を抑えます。
+
+生成サーバーの初回起動は依存環境の取得で数分かかる場合があります。`media_service(start)` は接続を待ち、待機時間を超えても起動中なら `ready:false,status:starting` を返します。その場合は `media_status` で再確認します。`node_modules/.bin/node tests/generator-readiness.mjs` はこの案内表示を模擬APIで確認し、GPUを使いません。DSHを読み込むテストはNixOSの実行環境でlibstdc++が参照できる状態で実行してください。
 
 ブラウザテストは Playwright Chromium または `CHROME_PATH` の Chrome を使います。NixOS の Chrome は自動検出します。DSH 統合テストでは `TEST_PYTHON` で Python 3.12 以降を指定できます。Gemma/Qwen は模擬 API、Krea は公式と同じ関数インターフェースのテスト用実装です。実機スモークテストは起動・入出力の機能確認であり、作品品質・長時間学習の品質・性能評価は含みません。
 

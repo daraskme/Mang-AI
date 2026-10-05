@@ -1,7 +1,9 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>メディアギャラリー · Mang-AI</title><link rel="stylesheet" href="/gallery.css"></head>
 <body>
+<style>#scope{display:flex;gap:6px;padding:12px 20px;border-bottom:1px solid var(--line)}#scope button[aria-pressed=true]{background:#24352f;color:var(--accent);border-color:#537564}.embedded header{height:52px;padding:8px 14px}.embedded .brand{font-size:14px}.embedded .brand small{display:none}.embedded .workspace{min-height:0}.embedded #scope{padding:8px 14px}@media(max-width:850px){.embedded .workspace{display:block}.embedded aside{padding:10px 14px;border-right:0;border-bottom:1px solid var(--line)}.embedded aside h1,.embedded aside>.muted,.embedded aside label,.embedded #collection-search{display:none}.embedded nav{grid-template-columns:1fr 1fr;margin:0}.embedded #collections{max-height:110px;min-height:0;grid-template-columns:1fr 1fr;margin-top:8px}.embedded main{padding:14px}}</style>
 <header><div class="brand">M<span>✦</span>NG-AI <small>メディアギャラリー</small></div><button id="refresh">一覧を更新</button></header>
+<div id="scope" hidden role="group" aria-label="メディアの表示範囲"><button data-scope="session" aria-pressed="true">このセッション</button><button data-scope="all" aria-pressed="false">すべての素材</button></div>
 <div class="workspace">
   <aside><h1>ライブラリ</h1><p class="muted">制作途中のページも、学習素材も。</p>
     <nav id="groups" aria-label="メディアの種類">

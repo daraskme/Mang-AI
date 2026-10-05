@@ -1,12 +1,18 @@
 import { pageSVG, bubbleLayout } from '/render.js';
 import { LAYOUTS, PAGE_W, PAGE_H } from '/model.js';
+import { mountProgress } from '/progress.js';
+import { navigateMedia } from '/navigation.js';
 
 const $=id=>document.getElementById(id);
 const hash=new URLSearchParams(location.hash.slice(1));
 const projectId=hash.get('project'),token=hash.get('token');
+const progressCSS=document.createElement('link');progressCSS.rel='stylesheet';progressCSS.href='/progress.css';document.head.append(progressCSS);
+const progressHost=document.createElement('section');progressHost.id='productionProgress';document.querySelector('.canvas-toolbar').after(progressHost);
+if(projectId&&token)mountProgress(progressHost,{fetchSnapshot:async()=>{const r=await fetch(`/api/${projectId}/progress`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});const data=await r.json();if(!r.ok)throw Error(data.error);return data;}});
 const galleryButton=document.createElement('button');galleryButton.textContent='ギャラリー';galleryButton.className='quiet';document.querySelector('.top-actions').prepend(galleryButton);
-galleryButton.onclick=()=>act(async()=>{requireSaved();location.href=(await api('gallery')).url;});
+galleryButton.onclick=()=>act(async()=>{if(hash.get('embedded')!=='1')requireSaved();navigateMedia((await api('gallery')).url);});
 let project=null,pageIndex=0,selected='',draft=null,dirty=false,busy=false,drag=null;
+window.mangAIHasUnsavedChanges=()=>dirty||$('scriptDialog').open;
 const imageURLs=new Map();
 const fields=['speaker','text','kind','direction','x','y','width','height','fontSize','tailX','tailY'];
 const directionHelp=document.createElement('p');directionHelp.className='muted';directionHelp.textContent='台詞は縦書きが基本です。上から下、列は右から左へ読みます。縦書きでは、改行は次の左列へ送ります。';$('direction').closest('.field-grid').after(directionHelp);
@@ -125,7 +131,7 @@ $('canvas').addEventListener('pointermove',event=>{
 $('canvas').addEventListener('pointerup',()=>{if(drag)message('位置を変更しました。保存してください');drag=null;});
 $('canvas').addEventListener('pointercancel',()=>{drag=null;});
 $('refresh').onclick=()=>act(()=>load());
-artButton.onclick=()=>act(async()=>{requireSaved();message('画像編集を準備しています');const result=await api('open-edit',{pageId:currentPage().id,panelId:artSelect.value});location.href=result.url;});
+artButton.onclick=()=>act(async()=>{requireSaved();message('画像編集を準備しています');const result=await api('open-edit',{pageId:currentPage().id,panelId:artSelect.value});navigateMedia(result.url);});
 $('approve').onclick=()=>act(async()=>{requireSaved();const result=await api('approve',{revision:project.revision});project=result.project;drawAll();message('脚本を確定しました。作画を開始できます');});
 $('render').onclick=()=>act(async()=>{requireSaved();message('GPUを使用してこのページを作画します');const {job}=await api('render',{pageId:currentPage().id,...generationModel.value?{model_id:generationModel.value,preset:'turbo8'}:{}});message(`Krea 2 の生成キューに追加しました · ${job.id.slice(0,8)}`);await load(true);});
 $('script').onclick=()=>{if(!project)return;const script={pages:project.pages.map(({layout,purpose,panels})=>({layout,purpose,panels:panels.map(({action,artPrompt,dialogue})=>({action,artPrompt,dialogue}))}))};$('scriptText').value=JSON.stringify(script,null,2);$('scriptDialog').showModal();};
@@ -134,7 +140,7 @@ $('saveScript').onclick=()=>act(async()=>{requireSaved();const result=await api(
 $('export').onclick=()=>act(async()=>{requireSaved();const result=await api('export',{});message(`保存先：${result.directory}${result.warnings.length?' ／ '+result.warnings.join(' ／ '):''}`);});
 async function svgForDownload(){
   requireSaved();const page=currentPage();if(!page)throw new Error('ページがありません');const images={};
-  for(const panel of page.panels)if(panel.image){const blob=await(await fetch(imageURLs.get(panel.image))).blob();images[panel.id]=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
+  for(const panel of page.panels)if(panel.image){const response=await fetch(`/api/${projectId}/${panel.image}`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw Error('書き出すコマ画像を読み込めませんでした');const blob=await response.blob();images[panel.id]=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
   return pageSVG(page,images);
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}

@@ -39,6 +39,7 @@ export async function apply(ctx, options) {
   try {service=new MangaService(config,ctx.subprocess);editor=await startEditor(service,config.editorPort);}
   catch(error) {if(service) await service.close();await unlock();throw error;}
   ctx.effect(()=>async()=>{await editor.close();await service.close();await unlock();});
+  ctx.inject(['webServer'],web=>{editor.allowFrameOrigin(`http://127.0.0.1:${web.webServer.port}`);editor.allowFrameOrigin(`http://localhost:${web.webServer.port}`);});
   const register=(toolName,description,parameters,execute)=>ctx.tools.register(defineTool({
     name:toolName,description,parameters,
     output:{schema:{type:'object',additionalProperties:true},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},
@@ -49,7 +50,14 @@ export async function apply(ctx, options) {
   register('manga_create','現在の DSH セッション専用の漫画作品を作成する。既存作品は上書きしない。',{
     title:string('作品名'),brief:string('あらすじ・制作依頼'),characters:string('人物の外見・衣装・口調・関係の固定設定',false),style:string('共通画風（英語推奨）',false),
   },(args,exec)=>({project:service.create(exec.agent.id,args),editorUrl:editor.url(sessionKey(exec.agent.id))}));
-  register('manga_status','現在のセッションの漫画・台詞・生成ジョブを読む。再開時と更新前に必ず使う。',{},(_args,exec)=>({...service.status(exec.agent.id),editorUrl:editor.url(sessionKey(exec.agent.id))}));
+  register('manga_status','現在のセッションの漫画・台詞・生成ジョブを読む。再開時は全文、作画の進捗確認はdetail:progressを使う。',{detail:{type:'string',enum:['full','progress'],description:'省略時full。progressは長い脚本を繰り返し返さない'}},(args,exec)=>{
+    const result=service.status(exec.agent.id);
+    if(args.detail==='progress'){
+      const p=result.project;result.project={id:p.id,revision:p.revision,approved:p.approved,pages:p.pages.map(page=>({id:page.id,panels:page.panels.map(panel=>({id:panel.id,image:panel.image}))}))};
+      result.jobs=result.jobs.map(job=>({id:job.id,pageId:job.pageId,status:job.status,completed:job.completed,total:job.panels.length,error:job.error}));
+    }
+    return {...result,editorUrl:editor.url(sessionKey(exec.agent.id))};
+  });
   register('manga_draft','日本語創作用 Gemma に人物設定と現脚本を渡して漫画脚本を作る。既存脚本の置換時は利用者の改稿指示が必要。',{
     instruction:string('今回の執筆・改稿指示'),pageCount:number('ページ数 1〜32'),revision:number('manga_status が返した現在の revision'),
   },(args,exec)=>service.draft(exec.agent.id,args,exec.signal));
@@ -61,15 +69,15 @@ export async function apply(ctx, options) {
     bubble:{type:'object',additionalProperties:false,properties:{
       id:string('英数字の吹き出しID'),text:string('画像に重ねる日本語本文'),speaker:string('話者',false),kind:{type:'string',enum:['speech','thought','caption','text'],required:true},direction:{type:'string',enum:['vertical','horizontal'],description:'新規は省略すると縦書き。更新時の省略は現在の方向を保持。通常はvertical、横書きが必要な箇所だけhorizontal'},
       ...Object.fromEntries(['x','y','width','height','fontSize','tailX','tailY'].map(k=>[k,{type:'number',required:true,description:k==='fontSize'?'12〜100。通常26〜34':`ページ上の ${k}`}]))},description:'upsert時に必要。x,y は左上。尾の先端が tailX,tailY'},
-  },(args,exec)=>service.letter(exec.agent.id,args));
+  },(args,exec)=>{const result=service.letter(exec.agent.id,args),p=result.project;return {project:{id:p.id,revision:p.revision},pageId:args.pageId,bubbles:p.pages.find(page=>page.id===args.pageId).bubbles,warnings:result.warnings};});
   register('manga_open_editor','このセッションの吹き出し・文字編集画面を開くための URL を返す。脚本の確認・確定もこの画面で行う。',{},(_args,exec)=>{
     service.status(exec.agent.id);return {url:editor.url(sessionKey(exec.agent.id))};
   });
   register('manga_render','確定済みの1ページをローカル Krea 2 公式 Python で作画する。GPUキューへ入れ、すぐジョブIDを返す。既存画像は既定で再生成しない。',{
     pageId:string('p1 など'),seed:number('0〜2147483647',false),regenerate:{type:'boolean',description:'明示的な再作画時だけ true'},
     model_id:string('media_status の KreaモデルID。Kroma は kroma-v03-turbo',false),preset:{type:'string',enum:['turbo8','fast4','raw'],description:'Kromaはturbo8を指定'},
-    loras:{type:'array',description:'追加するLoRA。省略時は既定、空配列でなし',items:{type:'object',additionalProperties:false,properties:{id:string('LoRA ID'),weight:number('通常0〜1',false),enabled:{type:'boolean'}}}},
-  },async(args,exec)=>({job:await service.render(exec.agent.id,args)}));
+    loras:{type:'array',description:'追加するLoRA。省略時は既定、空配列でなし',items:{type:'object',additionalProperties:false,properties:{id:string('LoRA ID'),weight:{type:'number',description:'通常0〜1。0.6など小数も指定可能'},enabled:{type:'boolean'}}}},
+  },async(args,exec)=>({job:await service.render(exec.agent.id,args),poll:{tool:'manga_status',arguments:{detail:'progress'}},note:'漫画専用ジョブです。状態はmanga_statusで確認します。'}));
   register('manga_history','このセッションの保存履歴を新しい順に最大100件表示する。',{},(_args,exec)=>({revisions:service.store.history(sessionKey(exec.agent.id))}));
   register('manga_restore','利用者が指定した保存版を、このセッションの新しい版として復元する。現在の版も履歴に残る。',{
     targetRevision:number('復元する保存版'),revision:number('現在の revision'),
@@ -78,9 +86,12 @@ export async function apply(ctx, options) {
   register('manga_export','ページSVG・閲覧/印刷用HTML・編集JSONをセッション配下の新しいフォルダへ書き出す。',{},(_args,exec)=>service.export(exec.agent.id));
   registerStudioTools(register,service.studios);
   ctx.systemPrompt.section({name:'resource-notice',order:20001,interpolate:false,text:'利用者の希望：GPUやRAMへ大きな負荷をかける生成・学習・大規模モデル読込の前に、実行する内容と負荷の見込みを短く日本語で知らせる。既に依頼されている処理は、通知のためだけに承認を再要求しない。負荷の数値が不明なら推測値を断定しない。'});
+  ctx.systemPrompt.section({name:'media-startup',order:10304,interpolate:false,text:'media_service / media_status がready:false,status:startingなら生成環境は起動準備中。media_statusが準備完了を返すまで生成・再起動を繰り返さず、このツールで待つ。依存環境の初回取得は数分かかる場合がある。漫画の作画待ちにはmanga_status(detail:progress)を使う。'});
   ctx.systemPrompt.section({name:'manga-vertical-lettering',order:10301,interpolate:false,text:'漫画の日本語の台詞は基本縦書き。manga_letterの新規入力はdirection:verticalを使い、上から下・右の列から左の列へ読む。改行は次の左列へ送る。横書きは利用者が指定した箇所や横組みの看板等に限る。既存ページの台詞を縦書きへ変更する指示にはmanga_letter(action:verticalize)を使える。文字や画像を再生成せず、縦組みで溢れた場合は吹き出しの高さ・幅・文字サイズを調整する。'});
   register('media_open_gallery','データセット、全セッションの制作中の漫画、生成画像・動画を閲覧するメディアギャラリーを開く。キャプション確認と編集再開ができる。',{},(_a,e)=>({url:editor.galleryUrl(sessionKey(e.agent.id),e.agent.id)}));
   ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_GALLERY__',value:editor.galleryUrl(sessionKey('gallery'),'gallery')}));
+  ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_PROGRESS__',value:editor.progressUrl(sessionKey('gallery'),'gallery')}));
+  ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_WORKSPACE__',value:editor.workspaceUrl(sessionKey('gallery'),'gallery')}));
   register('media_open_generator','画像・動画・長尺動画の生成画面を開く。モデル選択、手動生成、ショット計画、進捗確認、Hires・アップスケールができる。',{},(_a,e)=>({url:editor.generationUrl(sessionKey(e.agent.id),e.agent.id)}));
   ctx.systemPrompt.section({name:'longvideo',order:10303,interpolate:false,text:'長尺動画は media_service(provider=longvideo,action=start) の後、h3_longvideo_plan で共通設定＋空行で区切った各ショットを検査し、h3_longvideo_generate で生成する。既定はDaSiWa Turbo v3、0.4MP、8steps。仕上げは0.8MP、導入済み潜在upscalerを使える。台詞は二重引用符、環境音は各ショットに明記する。音の指定がないショットは無音になる。media_jobで完了と保存パスを確認する。media_open_generatorは手動生成GUI。画像のHiresはmedia_upscaleで4step・denoise0.25が既定。H3の単発生成は8step、確認用はturbo4。merged Turboモデルに加速LoRAを重ねない。'});
   register('media_open_editor','IOPaint 修正・モザイクの編集画面を開く。path に画像/MP4の絶対パス、または pageId/panelId に漫画のコマを指定する。元ファイルを保持する。',{

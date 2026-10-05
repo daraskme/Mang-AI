@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadConfig, packageRoot } from '../src/config.js';
+import { localCompactionPolicy } from '../src/context-policy.js';
 
 /** Produce a DSH overlay without changing any existing user profile. */
 export async function configure({patchPath=resolve(packageRoot,'local.patch.yml')}={}) {
@@ -21,6 +22,10 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
   preset.description='日本語創作・画像・動画・キャプション・学習・検索・コーディング';
   preset.plugins.find(p=>p.id==='persona').config={prefix:'あなたは {{model}} を使う日本語の制作・コーディングエージェントです。',suffix:'作業ディレクトリは {{cwd}} です。'};
   preset.plugins.push({id:'tool-cordis',name:'@deepseek-ai/dsh-tool-cordis'},{id:'tool-plugin-manager',name:'@deepseek-ai/dsh-plugin-manager/tools'});
+  const compaction=preset.plugins.find(p=>p.id==='compaction')?.config.find(p=>p.id==='compaction-basic');
+  if(!compaction)throw Error('標準プリセットに会話要約機能がありません');
+  compaction.name=resolve(packageRoot,'src/local-compaction.js');
+  compaction.config={...localCompactionPolicy};
   const home=process.env.DSH_HOME||resolve(packageRoot,'.dsh'),profileDir=resolve(home,'profiles/manga');
   await mkdir(profileDir,{recursive:true});
   for(const name of ['cordis.yml','cordis.patch.yml'])try{await writeFile(resolve(profileDir,name),'[]\n',{flag:'wx'});}catch(error){if(error.code!=='EEXIST')throw error;}
@@ -45,7 +50,7 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
     {id:'llm-pi-ai',config:{providers:{'manga-qwen':{
       displayName:'Qwen · ローカルエージェント',api:'openai-completions',apiKeyEnv:'MANGA_QWEN_API_KEY',baseURL:q.baseURL,
       compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},
-      models:[{id:q.model,name:'Qwen3.8 27B Q8 · ローカル',contextWindow:q.contextWindow,maxTokens:q.maxTokens,input:['text']}],
+      models:[{id:q.model,name:'Qwen3.8 27B Q8 · ローカル',contextWindow:q.contextWindow,maxTokens:Math.min(q.maxTokens,Math.floor(q.contextWindow/8)),input:['text']}],
     }}}},
     {insert:[{id:'manga-studio',name:resolve(packageRoot,'src/plugin.js'),config:{configFile:resolve(file)}},{id:'mang-ai-local-runtime',name:'@mang-ai/local-runtime'}]},
   ];

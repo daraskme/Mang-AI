@@ -182,7 +182,10 @@ def main(request):
         model = LaMa(device=torch.device('cpu'))
         with torch.inference_mode():
             # IOPaint's unmasked-area blend can return float64 (0..255).
-            bgr = np.clip(model(rgb, mask, InpaintRequest()), 0, 255).astype(np.uint8)
+            # IOPaint's HD crop path writes into its input array. PIL-backed
+            # np.asarray is read-only; keep it intact for the exact outside-mask
+            # restoration below, and pass a writable copy to the model.
+            bgr = np.clip(model(rgb.copy(), mask, InpaintRequest()), 0, 255).astype(np.uint8)
             result = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         # Keep every unselected pixel exactly, regardless of model crop options.
         result[mask == 0] = rgb[mask == 0]

@@ -1,11 +1,14 @@
+import {navigateMedia} from '/navigation.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
 const owner=params.get('project'),assetId=params.get('asset'),token=params.get('token');
 // Opening another editor link in the same tab changes only the fragment.
 window.addEventListener('hashchange',()=>location.reload());
 document.querySelector('.brand').removeAttribute('href');
 let asset,busy=false,jobId=null,before=false,image,drag=null,maskUndo=[],videoURL='';
+window.mangAIHasUnsavedChanges=()=>busy||(maskUndo.length>0&&m.getImageData(0,0,mask.width,mask.height).data.some((v,i)=>i%4===3&&v>0));
 const canvas=$('picture'),mask=$('mask'),ctx=canvas.getContext('2d'),m=mask.getContext('2d'),video=$('video');
 const back=document.createElement('a');back.textContent='漫画の文字編集へ';back.href=`/#project=${owner}&token=${token}`;back.hidden=true;document.querySelector('.media-heading').append(back);
+back.onclick=e=>{e.preventDefault();navigateMedia(back.href);};
 function message(text,error=false){$('status').textContent=text;$('status').style.color=error?'#aa493a':'';}
 async function api(action,body){const r=await fetch(`/api/${owner}/edit/${action}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},body:body?JSON.stringify(body):undefined});const value=await r.json();if(!r.ok)throw new Error(value.error);return value;}
 function fileURL(version=asset.current){return `/api/${owner}/edit/${assetId}/file?version=${encodeURIComponent(version)}&token=${encodeURIComponent(token)}`;}

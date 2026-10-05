@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
-import { readdir, access, readFile, mkdir, rm } from 'node:fs/promises';
+import { readdir, access, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MangaService } from '../src/service.js';
 import { startEditor } from '../src/editor-server.js';
 import { packageRoot } from '../src/config.js';
-import { config, tempRoot, script, bubble } from './fixtures.js';
+import { config, tempRoot, script, bubble, png as imageFixture } from './fixtures.js';
 
 const root=await tempRoot('browser'),service=new MangaService(config(root),{});
 const project=service.create('browser-fixture',{title:'雨上がりの手紙',brief:'吹き出し編集の動作確認用ページ。画像はまだ生成していません。',characters:'紗季：紺色のコート。悠：薄茶色のジャケット。'});
 service.setScript('browser-fixture',{script,revision:1});
 service.letter('browser-fixture',{pageId:'p1',revision:2,action:'upsert',bubble});
+const image='images/p1-c1-00000000-0000-0000-0000-000000000001.png';
+await mkdir(join(service.store.directory(project.id),'images'),{recursive:true});
+await writeFile(join(service.store.directory(project.id),image),imageFixture);
+service.store.update(project.id,3,p=>p.pages[0].panels[0].image=image);
 const editor=await startEditor(service,0);let browser;
 try{
   let executablePath=process.env.CHROME_PATH;
@@ -36,7 +40,7 @@ try{
   for(const [id,name] of [['downloadSvg','page.svg'],['downloadPng','page.png']]){
     const event=page.waitForEvent('download');await page.locator('#'+id).click();const download=await event;await download.saveAs(join(out,name));
   }
-  const svg=await readFile(join(out,'page.svg'),'utf8');assert(svg.includes('今、読んでもいい？'));assert(svg.includes('vertical-rl'));
+  const svg=await readFile(join(out,'page.svg'),'utf8');assert(svg.includes('今、読んでもいい？'));assert(svg.includes('vertical-rl'));assert(svg.includes('data:image/png;base64,'));
   const png=await readFile(join(out,'page.png'));assert.equal(png.readUInt32BE(16),2000);assert.equal(png.readUInt32BE(20),2828);
   await page.evaluate(()=>{document.querySelector('.inspector').scrollTop=0;document.querySelector('.canvas-area').scrollTop=0;});
   await page.screenshot({path:join(out,'editor-desktop.png'),fullPage:true});

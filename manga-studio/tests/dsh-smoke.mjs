@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { packageRoot } from '../src/config.js';
 import { Store } from '../src/store.js';
 import { config, tempRoot, script, bubble, png } from './fixtures.js';
+import { localCompactionPolicy } from '../src/context-policy.js';
 
 const root=await tempRoot('dsh'),repo=join(root,'krea');await mkdir(repo);
 let python=process.env.TEST_PYTHON;
@@ -35,6 +36,7 @@ const server=createServer(async(req,res)=>{
     }
     assert.equal(input.stream,true);
     assert(input.tools.some(t=>t.function?.name==='manga_letter'));
+    assert.equal(input.tools.find(t=>t.function?.name==='manga_render').function.parameters.properties.loras.items.properties.weight.type,'number');
     for(const name of ['krea_generate','h3_generate','media_job','caption_open','caption_generate','caption_save','lora_prepare','lora_run','lora_install','media_open_editor','media_edit','media_edit_status','media_edit_cancel','media_edit_commit'])assert(input.tools.some(t=>t.function?.name===name),`Missing DSH tool: ${name}`);
     const last=input.messages.filter(m=>m.role==='tool').at(-1),value=unpack(last);
     if(last)results.push(last);
@@ -42,15 +44,16 @@ const server=createServer(async(req,res)=>{
     if(step===0)call=['manga_create',{title:'DSH 統合試験',brief:'ローカル制作の検証'}];
     else if(step===1)call=['manga_draft',{instruction:'1ページにする',pageCount:1,revision:1}];
     else if(step===2)call=['manga_letter',{pageId:'p1',revision:2,action:'upsert',bubble:{...bubble,direction:undefined}}];
-    else if(step===3)call=['manga_open_editor',{}];
+    else if(step===3){assert.equal(value?.bubbles?.[0]?.direction,'vertical');assert.equal(value.project.pages,undefined);call=['manga_open_editor',{}];}
     else if(step===4){
       assert(value?.url,`editor URL missing: ${JSON.stringify(last)}`);const url=new URL(value.url),hash=new URLSearchParams(url.hash.slice(1));
       const approved=await fetch(`${url.origin}/api/${hash.get('project')}/approve`,{method:'POST',headers:{Authorization:`Bearer ${hash.get('token')}`,'Content-Type':'application/json'},body:JSON.stringify({revision:3})});
       assert.equal(approved.status,200);call=['manga_render',{pageId:'p1',seed:12}];
-    } else if(step===5)call=['manga_status',{}];
+    } else if(step===5)call=['manga_status',{detail:'progress'}];
     else if(step===6){
+      assert.equal(value?.project?.brief,undefined);assert.equal(value?.project?.pages?.[0]?.panels?.[0]?.artPrompt,undefined);
       if(value?.jobs?.[0]?.status==='completed')call=['manga_export',{}];
-      else {assert(!['failed','interrupted','canceled'].includes(value?.jobs?.[0]?.status),JSON.stringify(value));step--;await new Promise(resolve=>setTimeout(resolve,100));call=['manga_status',{}];}
+      else {assert(!['failed','interrupted','canceled'].includes(value?.jobs?.[0]?.status),JSON.stringify(value));step--;await new Promise(resolve=>setTimeout(resolve,100));call=['manga_status',{detail:'progress'}];}
     }
     else if(testEditing&&step===7)call=['media_open_editor',{pageId:'p1',panelId:'p1-c1'}];
     else if(testEditing&&step===8){assert(value?.asset?.id,JSON.stringify(last));editAsset=value.asset.id;call=['media_edit',{assetId:editAsset,revision:value.asset.revision,mode:'mosaic',regions:[{x:0,y:0,width:1,height:1}],block:2}];}
@@ -75,6 +78,8 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const c=config(join(root,'data'));c.gemma.baseURL=`http://127.0.0.1:${server.address().port}/v1`;c.gemma.model='fake-gemma';c.krea.repo=repo;c.krea.python=python;c.krea.weights=join(repo,'weights');
 await writeFile(join(root,'config.json'),JSON.stringify(c));
 const overlay=[
+  {id:'compaction-basic',disabled:true},
+  {insert:[{id:'local-compaction',name:join(packageRoot,'src/local-compaction.js'),config:{...localCompactionPolicy}}]},
   {id:'agent-default-model',config:{provider:'manga-test',model:'fake-qwen'}},
   {id:'llm-pi-ai',config:{providers:{'manga-test':{api:'openai-completions',apiKeyEnv:'MANGA_TEST_KEY',baseURL:c.gemma.baseURL,compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},models:[{id:'fake-qwen',contextWindow:32768,maxTokens:2048,input:['text']}]}}}},
   {insert:[{id:'manga-studio',name:join(packageRoot,'src/plugin.js'),config:{configFile:join(root,'config.json')}}]},

@@ -108,6 +108,30 @@ test('cancelling API rendering also cancels its remote job',async t=>{
   assert.equal(f.cancelled(),true);
 });
 
+test('service start waits for its HTTP endpoint, and status distinguishes startup from offline',async t=>{
+  const f=await fixture(t),s=f.studios,calls=[];let state='active',probes=0;
+  s.subprocess={spawn(spec){calls.push(spec.argv);return {done:Promise.resolve({exitCode:0}),waitForExit:async()=>{},collected:{stdout:{readFrom:()=>({text:state+'\n'})}}};}};
+  const unavailable=()=>new TypeError('fetch failed',{cause:{code:'ECONNREFUSED'}});
+  s.request=async()=>{if(++probes===1)throw unavailable();return {ok:true};};
+  const ready=await s.control('krea','start');
+  assert.equal(ready.ready,true);assert.equal(probes,2);assert.equal(calls.length,1);
+  assert.deepEqual(calls[0],['systemctl','--user','start','krea2-studio.service']);
+  f.c.krea.statusWaitMs=0;s.request=async()=>{throw unavailable();};
+  assert.equal((await s.status('krea')).status,'starting');
+  state='inactive';assert.equal((await s.status('krea')).status,'offline');
+  assert(calls.slice(1).every(argv=>argv[2]==='show'));
+});
+
+test('readiness preserves cancellation and server errors without silently retrying them',async t=>{
+  const {studios:s}=await fixture(t);let probes=0;
+  const abort=new AbortController();abort.abort(new Error('cancel test'));
+  s.request=async()=>{probes++;throw Error('krea HTTP 500');};
+  await assert.rejects(s.waitReady('krea',abort.signal),/cancel test/);assert.equal(probes,0);
+  await assert.rejects(s.waitReady('krea'),/HTTP 500/);assert.equal(probes,1);
+  const during=new AbortController();s.request=async()=>{during.abort(new Error('cancel during probe'));throw new TypeError('fetch failed',{cause:{code:'ECONNREFUSED'}});};
+  await assert.rejects(s.waitReady('krea',during.signal),/cancel during probe/);
+});
+
 test('caption defaults preserve existing text, require matching dataset, and training installs without overwriting',async t=>{
   const f=await fixture(t),s=f.studios;
   await s.captionOpen('alice',{folder:f.root,settings:{trigger:'sample'}});

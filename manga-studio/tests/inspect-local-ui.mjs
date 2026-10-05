@@ -16,8 +16,8 @@ await p.route('**/*',async route=>{
 await p.goto(process.env.TEST_URL||'http://127.0.0.1:4340/?token=h6-lwxlVKH-JiMhtzyWWNXffnG5fOv3buLADGcv9UK4');
 await p.waitForTimeout(2500);
 const notice=p.getByRole('button',{name:/^(Continue|続行|続ける)$/});if(await notice.count())await notice.click();
-const galleryLink=p.getByRole('link',{name:'▧ ギャラリー'});await galleryLink.waitFor();
-const galleryUrl=await galleryLink.getAttribute('href'),galleryHash=new URLSearchParams(new URL(galleryUrl).hash.slice(1));
+const galleryLink=p.getByRole('button',{name:'▧ ギャラリー',exact:true});await galleryLink.waitFor();
+const galleryUrl=await p.evaluate(()=>window.__MANGAI_GALLERY__),galleryHash=new URLSearchParams(new URL(galleryUrl).hash.slice(1));
 const catalog=await fetch(`${new URL(galleryUrl).origin}/api/${galleryHash.get('project')}/gallery/collections`,{headers:{Authorization:`Bearer ${galleryHash.get('token')}`}}).then(r=>{assert.equal(r.status,200);return r.json();});
 console.log('Gallery',JSON.stringify({datasets:catalog.items.filter(c=>c.group==='datasets').length,missing:catalog.items.filter(c=>c.missing).map(c=>({name:c.title,links:c.missing})),projects:catalog.items.filter(c=>c.group==='projects').length}));
 if(process.env.TEST_DATASETS==='48')assert.equal(catalog.items.filter(c=>c.group==='datasets').length,48);

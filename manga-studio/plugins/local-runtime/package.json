@@ -4,5 +4,5 @@
   "type": "module",
   "private": true,
   "exports": {".": "./index.js", "./client": "./client.js", "./locale/*.json": "./locale/*.json"},
-  "dsh": {"client": {"platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-plugin-manager", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-api-remotes"]}}
+  "dsh": {"client": {"platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-plugin-manager", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-api-remotes", "@deepseek-ai/dsh-client-ui-sidebar-right", "@deepseek-ai/dsh-client-ui-layout"]}}
 }

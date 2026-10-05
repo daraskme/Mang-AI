@@ -8,6 +8,7 @@ import { writeScript } from './creative.js';
 import { packageRoot } from './config.js';
 import { LocalStudios } from './local-studios.js';
 import { MediaEdits } from './media-edits.js';
+import { WorkflowProgress } from './progress.js';
 
 /** Session-owned authoring and a single GPU queue shared by the DSH plugin. */
 export class MangaService {
@@ -16,6 +17,7 @@ export class MangaService {
     this.store=new Store(config.dataDir); this.store.recoverJobs();
     this.studios=new LocalStudios(config,this.store,subprocess);
     this.edits=new MediaEdits(this);
+    this.progress=new WorkflowProgress(this);
     this.live=new Map(); this.queue=Promise.resolve(); this.closed=false;
   }
   create(session,args) {return this.store.create(session,args);}
@@ -27,6 +29,7 @@ export class MangaService {
     integer(pageCount,'ページ数',1,32); text(instruction,'指示');
     const p=this.store.get(sessionKey(session));
     if(p.revision!==revision) return this.store.update(p.id,revision,()=>{});
+    return this.progress.track(p.id,'draft',async()=>{
     const result=await this.creative(p,this.config.gemma,instruction,pageCount,signal);
     signal.throwIfAborted();
     const requestDir=join(this.store.directory(p.id),'requests');
@@ -35,6 +38,7 @@ export class MangaService {
     await writeFile(trace,JSON.stringify(result,null,2),'utf8');
     const updated=this.store.update(p.id,revision,state=>replaceScript(state,result.pages));
     return {project:updated,trace};
+    });
   }
   setScript(session,{script,revision}) {
     const pages=normalizeScript(script);
@@ -100,7 +104,9 @@ export class MangaService {
     try {
       if(k.backend==='studio') {
         for(const req of requests) {
-          await this.studios.renderKrea({...req,...job.generation},signal,remoteId=>{job.remoteId=remoteId;this.store.saveJob(job);});
+          await this.studios.renderKrea({...req,...job.generation},signal,remoteId=>{job.remoteId=remoteId;job.progress=null;this.store.saveJob(job);},remote=>{
+            job.progress={panelId:req.id,stage:remote.stage,message:remote.message,ratio:Number.isFinite(remote.progress)?Math.max(0,Math.min(1,remote.progress)):null};this.store.saveJob(job);
+          });
           job.completed.push(req.id);this.store.saveJob(job);
         }
       } else {
@@ -157,6 +163,7 @@ export class MangaService {
   async export(session) {
     const p=this.store.get(sessionKey(session));
     if(!p.pages.length) throw new Error('ページがありません');
+    return this.progress.track(p.id,'export',async()=>{
     const dir=join(this.store.directory(p.id),'exports',`r${p.revision}-${randomUUID().slice(0,8)}`);
     await mkdir(dir,{recursive:true});
     const files=[];
@@ -170,6 +177,7 @@ export class MangaService {
     await writeFile(join(dir,'index.html'),html,'utf8');
     await writeFile(join(dir,'project.json'),JSON.stringify(p,null,2),'utf8');
     return {directory:dir,html:join(dir,'index.html'),pages:files.map(f=>join(dir,f)),warnings:[...letteringWarnings(p),...p.pages.flatMap(pg=>pg.panels.filter(x=>!x.image).map(x=>`${x.id}: 作画待ち`))]};
+    },p.revision);
   }
   async readImage(id,image) {
     if(!/^images\/p\d+-c\d+-[a-f0-9-]+\.png$/.test(image)) throw new Error('画像パスが不正です');

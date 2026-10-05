@@ -49,10 +49,28 @@ export class LocalStudios {
     return raw?response:response.json();
   }
   async status(provider,signal) {
+    const readiness=await this.waitReady(provider,signal,this.config[provider]?.statusWaitMs??10000);
+    if(!readiness.ready)return readiness;
     if(provider==='longvideo')return {url:this.base(provider),queue:await this.request(provider,'/queue',{signal}),models:(await this.request(provider,'/object_info/UNETLoader',{signal})).UNETLoader.input.required.unet_name[0],loras:(await this.request(provider,'/object_info/LoraLoaderModelOnly',{signal})).LoraLoaderModelOnly.input.required.lora_name[0],options:(await this.request(provider,'/object_info/H3LongVideos',{signal})).H3LongVideos.input};
     if(provider==='krea')return {url:this.base(provider),state:await this.request(provider,'/api/state',{signal}),models:await this.request(provider,'/api/models',{signal}),loras:await this.request(provider,'/api/loras',{signal})};
     if(provider==='h3')return {url:this.base(provider),state:await this.request(provider,'/api/status',{signal}),models:await this.request(provider,'/api/inventory',{signal}),options:await this.request(provider,'/api/generation/options',{signal})};
     return {url:this.base(provider),engine:await this.request(provider,'/api/engine/status',{signal}),training:await this.request(provider,'/api/training/status',{signal})};
+  }
+  async waitReady(provider,signal,waitMs=45000) {
+    const path={krea:'/health',h3:'/api/status',caption:'/api/engine/status',longvideo:'/queue'}[provider];
+    this.base(provider);const deadline=Date.now()+waitMs;
+    do {
+      signal?.throwIfAborted();
+      try{await this.request(provider,path,{signal,timeoutMs:1500});return {provider,url:this.base(provider),ready:true,status:'ready'};}
+      catch(error){signal?.throwIfAborted();if(!['ECONNREFUSED','ECONNRESET','UND_ERR_SOCKET','UND_ERR_CONNECT_TIMEOUT'].includes(error.cause?.code)&&error.name!=='TimeoutError')throw error;}
+      if(Date.now()>=deadline)break;
+      await delay(Math.min(1000,Math.max(1,deadline-Date.now())),undefined,{signal});
+    }while(Date.now()<=deadline);
+    const h=this.subprocess.spawn({argv:['systemctl','--user','show','--property=ActiveState','--value',units[provider]],cwd:this.store.root,stdio:{stdin:'ignore',stdout:{maxBytes:1024},stderr:{maxBytes:1024}},signal,graceMs:3000});
+    const result=await h.done;await h.waitForExit();
+    const state=h.collected.stdout?.readFrom(0)?.text.trim();
+    const starting=result.exitCode===0&&['active','activating','reloading'].includes(state);
+    return {provider,url:this.base(provider),ready:false,status:starting?'starting':'offline',note:starting?'生成環境は起動準備中です。初回は依存環境の取得に時間がかかります。media_status で再確認してください。再起動や生成の連続送信は不要です。':'生成環境へ接続できません。media_service の start で起動してください。'};
   }
   async control(provider,action,signal) {
     this.base(provider);
@@ -81,7 +99,11 @@ export class LocalStudios {
     const handle=this.subprocess.spawn({argv:['systemctl','--user',action,units[provider]],cwd:this.store.root,stdio:{stdin:'ignore',stdout:{maxBytes:1024},stderr:{maxBytes:4096}},signal,graceMs:3000});
     const result=await handle.done;await handle.waitForExit();
     if(result.exitCode!==0)throw new Error(`systemctl ${action} が失敗しました: ${handle.collected.stderr?.readFrom(0)?.text||result.exitCode}`);
-    return {provider,action,url:this.base(provider),note:action==='start'?'サーバーを起動しました。media_status で準備状況を確認してください。':'停止しました。'};
+    if(action==='start') {
+      const readiness=await this.waitReady(provider,signal,this.config[provider]?.startupWaitMs??45000);
+      return {...readiness,action,note:readiness.ready?'サーバーの接続準備ができました。media_status でモデルを確認できます。':readiness.note};
+    }
+    return {provider,action,url:this.base(provider),note:'停止しました。'};
   }
   async generate(session,provider,args,signal) {
     if(provider==='longvideo')return submitLongVideo(this,session,args,signal);
@@ -156,13 +178,14 @@ export class LocalStudios {
     if(typeof remoteId!=='string')throw Error('アップスケールのジョブIDがありません');
     return {id:this.save(session,'media',{provider:ref.provider,remoteId,request:body,parent:id}),provider:ref.provider,job};
   }
-  async renderKrea(request,signal,onJob=()=>{}) {
+  async renderKrea(request,signal,onJob=()=>{},onProgress=()=>{}) {
     const submitted=await this.request('krea','/api/generate',{body:{...request,output:undefined,id:undefined,model_id:request.model_id||this.config.krea.model,preset:request.preset||this.config.krea.preset||'turbo8',attention_backend:'sdpa',loras:request.loras??this.config.krea.loras??[]},signal});
     const id=submitted.job_id;if(!id)throw new Error('Krea job_id がありません');onJob(id);
     try {
       while(true) {
         signal.throwIfAborted();
         const job=await this.request('krea',`/api/jobs/${encodeURIComponent(id)}`,{signal});
+        onProgress(job);
         if(job.status==='completed') {
           const url=job.result?.image_url;
           if(!url?.startsWith('/outputs/'))throw new Error('Krea の画像 URL が不正です');
