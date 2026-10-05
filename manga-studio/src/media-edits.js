@@ -32,8 +32,9 @@ export class MediaEdits {
   async worker(request,signal,onProgress=()=>{}) {
     const c=this.config;
     const argv=[c.python,join(packageRoot,'python/edit_media.py')];if(c.wrapper)argv.unshift('bash',c.wrapper);
+    if(this.service.config.gpu?.enabled)argv.unshift(c.python,join(packageRoot,'python/mangai_gpu.py'),'editing','--');
     await mkdir(c.cacheDir,{recursive:true});
-    const handle=this.service.subprocess.spawn({argv,cwd:c.mosaicRepo,env:{HF_HOME:join(c.cacheDir,'huggingface'),TORCH_HOME:join(c.cacheDir,'torch'),XDG_CACHE_HOME:c.cacheDir,PYTHONUNBUFFERED:'1',OMP_NUM_THREADS:'4'},stdio:{stdin:{data:JSON.stringify({...request,mosaicRepo:c.mosaicRepo})},stdout:'pipe',stderr:{maxBytes:12000}},signal,graceMs:3000});
+    const handle=this.service.subprocess.spawn({argv,cwd:c.mosaicRepo,env:{HF_HOME:join(c.cacheDir,'huggingface'),TORCH_HOME:join(c.cacheDir,'torch'),XDG_CACHE_HOME:c.cacheDir,PYTHONUNBUFFERED:'1',OMP_NUM_THREADS:'4',...this.service.config.gpu?.enabled?{MANGAI_GPU_STATE:join(packageRoot,'../work/gpu')}:{ }},stdio:{stdin:{data:JSON.stringify({...request,mosaicRepo:c.mosaicRepo})},stdout:'pipe',stderr:{maxBytes:12000}},signal,graceMs:3000});
     let buffer='',result,error;
     handle.stdout?.setEncoding('utf8');handle.stdout?.on('data',chunk=>{
       buffer+=chunk;const lines=buffer.split('\n');buffer=lines.pop();

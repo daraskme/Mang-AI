@@ -1,0 +1,5 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>モデル・LoRA · Mang-AI</title><link rel="stylesheet" href="/models.css"></head><body>
+<header><h1>モデル・LoRA</h1><p>このセッションで使うモデルとLoRAを選びます。サムネイルは自分の画像を登録できます。</p></header>
+<div class="toolbar"><label>生成環境<select id="provider"><option value="krea">Krea 2 / Kroma</option><option value="h3">MiniMax H3</option><option value="longvideo">H3 長尺動画</option></select></label><button id="start">環境を起動</button><button id="refresh">一覧を更新</button><button id="save">この組合せを使う</button></div>
+<p id="status" role="status"></p><p id="selection"></p><div class="toolbar"><label>表示<select id="kind"><option value="all">モデルとLoRA</option><option value="model">モデル</option><option value="lora">LoRA</option></select></label><label>検索<input id="search" type="search" placeholder="名前で絞り込み"></label></div><main id="cards"></main>
+<script type="module" src="/models.js"></script></body></html>

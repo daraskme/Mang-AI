@@ -30,6 +30,9 @@ const staticFiles = {
   '/workspace.js':['public/workspace.js','text/javascript; charset=utf-8'],
   '/workspace.css':['public/workspace.css','text/css; charset=utf-8'],
   '/navigation.js':['public/navigation.js','text/javascript; charset=utf-8'],
+  '/models.html':['public/models.html','text/html; charset=utf-8'],
+  '/models.js':['public/models.js','text/javascript; charset=utf-8'],
+  '/models.css':['public/models.css','text/css; charset=utf-8'],
 };
 async function streamFile(req,res,file) {
   res.setHeader('Content-Type',file.type);
@@ -80,11 +83,19 @@ export async function startEditor(service, port) {
       const [,id,action='']=match,credential=(req.headers.authorization||'').replace(/^Bearer /,'')||(req.method==='GET'&&/^edit\/[a-f0-9-]+\/file$/.test(action)?url.searchParams.get('token')||'':'');
       if(action.startsWith('gallery/')) {
         const verb=action.slice(8),expected=token('gallery:'+id);
-        const supplied=credential||(req.method==='GET'&&/^(file|thumb)\/[a-f0-9]{32}$/.test(verb)?url.searchParams.get('token')||'':'');
+        const supplied=credential||(req.method==='GET'&&/^(file|thumb|model-thumb)\/[a-f0-9]{32}$/.test(verb)?url.searchParams.get('token')||'':'');
         if(!gallerySessions.has(id)||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){send(401,{error:'Mang-AIのメディアギャラリーから開いてください'});return;}
         const session=url.searchParams.get('session'),sessionId=session?sessionKey(session):null;
-        if(req.method==='GET'&&verb==='collections'){const items=await gallery.catalog();send(200,{items:sessionId?items.filter(c=>c.id==='p-'+sessionId||c.id==='s-'+sessionId):items});return;}
-        if(req.method==='GET'&&verb==='progress'){send(200,{items:sessionId?(service.store.find(sessionId)?[service.progress.snapshot(sessionId)]:[]):service.progress.list()});return;}
+        if(req.method==='GET'&&verb==='models'){
+          const provider=url.searchParams.get('provider')||'krea',target=session||gallerySessions.get(id);
+          send(200,{...await service.studios.models.catalog(provider,{refresh:url.searchParams.get('refresh')==='1'}),selection:service.studios.models.selected(target,provider)});return;
+        }
+        if(req.method==='GET'&&verb.startsWith('model-thumb/')){await streamFile(req,res,await service.studios.models.thumbnailFile(verb.slice(12)));return;}
+        if(req.method==='POST'&&verb==='model-thumbnail'){const body=await jsonBody(req);send(200,await service.studios.models.thumbnail(body.key,body.dataUrl));return;}
+        if(req.method==='POST'&&verb==='model-selection'){const body=await jsonBody(req),target=body.session||gallerySessions.get(id);send(200,await service.studios.models.select(target,body));return;}
+        if(req.method==='POST'&&verb==='model-service'){const body=await jsonBody(req);send(200,await service.studios.control(body.provider,'start',AbortSignal.timeout(120000)));return;}
+        if(req.method==='GET'&&verb==='collections'){const items=await gallery.catalog();send(200,{items:sessionId?items.filter(c=>c.id==='p-'+sessionId||c.id==='s-'+sessionId||c.sessionKey===sessionId):items});return;}
+        if(req.method==='GET'&&verb==='progress'){send(200,{items:sessionId?(service.store.find(sessionId)?[service.progress.snapshot(sessionId)]:[]):service.progress.list(),gpu:await service.studios.gpuStatus()});return;}
         if(req.method==='GET'&&verb==='workspace'){
           const p=sessionId?service.store.find(sessionId):null;
           send(200,{title:p?.title||(session?'このセッション':'メディアライブラリ'),editorUrl:p?`${origin}/#project=${p.id}&token=${token(p.id)}`:null});return;
@@ -121,7 +132,7 @@ export async function startEditor(service, port) {
         }
         if(req.method!=='POST'){send(405,{error:'POST が必要です'});return;}
         const args=await jsonBody(req);
-        if(verb==='status')send(200,await service.studios.status(args.provider,signal));
+        if(verb==='status')send(200,{...await service.studios.status(args.provider,signal),selection:service.studios.models.selected(session,args.provider)});
         else if(verb==='library')send(200,await service.studios.library(args));
         else if(verb==='service')send(200,await service.studios.control(args.provider,args.action,signal));
         else if(verb==='plan')send(200,service.studios.planLongVideo(args));
@@ -162,7 +173,7 @@ export async function startEditor(service, port) {
         return;
       }
       const p=service.store.get(id);
-      if(req.method==='GET'&&action==='progress'){send(200,{items:[service.progress.snapshot(id)]});return;}
+      if(req.method==='GET'&&action==='progress'){send(200,{items:[service.progress.snapshot(id)],gpu:await service.studios.gpuStatus()});return;}
       if(req.method==='GET' && !action) {send(200,{project:p,jobs:service.store.jobs(id),warnings:letteringWarnings(p)});return;}
       if(req.method==='GET' && action==='models') {
         if(service.config.krea.backend!=='studio')throw new Error('モデル選択には Krea Studio 接続が必要です');

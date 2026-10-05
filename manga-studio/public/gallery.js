@@ -5,7 +5,7 @@ const session=hash.get('session');let scope=session?'session':'all';
 document.body.classList.toggle('embedded',hash.get('embedded')==='1');
 $('scope').hidden=!session;
 let collections=[],group='projects',collection=null,items=[],total=0,selection=-1,loadSerial=0,previewSerial=0,catalogSerial=0;
-const labels={projects:'制作中の漫画',sessions:'セッションのメディア',datasets:'データセット',outputs:'生成環境の履歴'};
+const labels={projects:'制作中の漫画',videos:'動画作品',sessions:'セッションのメディア',datasets:'データセット',outputs:'生成環境の履歴'};
 const bytes=n=>n===undefined?'':n>1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.ceil(n/1024)} KB`;
 const fileURL=(id,thumb=false)=>`${base}${thumb?'thumb':'file'}/${id}?token=${encodeURIComponent(token)}`;
 async function api(path,body){const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},...body?{body:JSON.stringify(body)}:{}});const result=await r.json();if(!r.ok)throw Error(result.error);return result;}

@@ -54,7 +54,7 @@ for relative in ['src','pyproject.toml','uv.lock','README.md','README.ja.md']:
         shutil.copytree(source,dest,dirs_exist_ok=True,ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     else:
         shutil.copy2(source,dest)
-for name, relative in {'comfyui':'upstream/ComfyUI','iopaint':'upstream/IOpaint','mosaic-editor':'upstream/mosaic_editor','krea-official':'upstream/krea-2'}.items():
+for name, relative in {'comfyui':'upstream/ComfyUI','iopaint':'upstream/IOpaint','mosaic-editor':'upstream/mosaic_editor','krea-official':'upstream/krea-2','strata':'upstream/Strata'}.items():
     cwd = ROOT/relative
     dependencies[name] = {'path': relative, 'revision': subprocess.check_output(['git','rev-parse','HEAD'],cwd=cwd).decode().strip(), 'url':subprocess.check_output(['git','remote','get-url','origin'],cwd=cwd).decode().strip()}
 (OUT/'manifest.json').write_text(json.dumps({'patches':manifest,'dependencies':dependencies,'longvideos':{'repo':'Smite79/MiniMax-H3-Longvideos','revision':'932b4e751c70a2d0194c2b7c7f731106adb830af','redistribute':False}}, indent=2)+'\n')

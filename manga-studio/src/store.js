@@ -72,6 +72,7 @@ export class Store {
     const saved=JSON.parse(row.body);
     return this.update(id,expectedRevision,p=>{
       for(const key of ['title','brief','characters','style','pages'])p[key]=saved[key];
+      if(saved.production)p.production=saved.production;else delete p.production;
       p.approved=null;
       for(const page of p.pages)page.letteringNeedsReview=page.bubbles.length>0;
     });

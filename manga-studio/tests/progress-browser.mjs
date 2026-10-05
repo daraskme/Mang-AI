@@ -19,7 +19,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#productionProgress [data-stage="render"]').dataset.state==='failed');
   assert.equal(await page.locator('#text').inputValue(),'保存前の台詞');
   page.on('dialog',dialog=>dialog.accept());await page.goto(editor.progressUrl(p.id,'progress-browser'));
-  await page.waitForFunction(()=>document.querySelector('.progress-card')?.textContent.includes('テスト用の生成エラー'));
+  await page.waitForFunction(()=>document.querySelector('article.progress-card')?.textContent.includes('テスト用の生成エラー'));
   job.status='completed';job.completed=[...job.panels];job.error=null;s.store.saveJob(job);
   s.store.update(p.id,p.revision,state=>state.pages[0].panels.forEach(panel=>panel.image='fixture.png'));
   await page.waitForFunction(()=>document.querySelector('[data-stage="render"]').dataset.state==='completed');

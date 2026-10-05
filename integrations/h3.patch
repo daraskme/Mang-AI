@@ -511,10 +511,28 @@ index 7992bfe..4ddc743 100644
  def acceleration_recipe(path: str) -> dict[str, object] | None:
      return ACCELERATION_LORAS.get(PurePosixPath(path.replace("\\", "/")).name.lower())
 diff --git a/h3studio/runner.py b/h3studio/runner.py
-index 14728df..34fd415 100644
+index 14728df..cce862e 100644
 --- a/h3studio/runner.py
 +++ b/h3studio/runner.py
-@@ -14,6 +14,7 @@ import json
+@@ -1,10 +1,17 @@
+ from __future__ import annotations
+ 
++import sys
++
+ import threading
++import os
++from contextlib import nullcontext
+ import traceback
+ import uuid
+ from datetime import datetime, timezone
+ from pathlib import Path
++
++if os.environ.get("MANGAI_GPU_STATE") and os.environ.get("MANGAI_GPU_RUNNER"):
++    sys.path.insert(0, str(Path(os.environ["MANGAI_GPU_RUNNER"]).parent))
+ from typing import Any
+ 
+ from .config import Settings
+@@ -14,6 +21,7 @@ import json
  from .metadata import embed_mp4_metadata, finalize_video
  from .postprocess import VideoPostprocessEngine
  from .store import JobStore, utcnow
@@ -522,7 +540,7 @@ index 14728df..34fd415 100644
  from .video import inspect_video, sha256_file
  
  
-@@ -127,10 +128,8 @@ class JobRunner:
+@@ -127,10 +135,8 @@ class JobRunner:
              job = self.store.get(job_id)
              if job["status"] != "failed" or not job.get("output_path") or not job.get("metadata_path"):
                  raise RuntimeError("This job has no recoverable generated video and metadata")
@@ -535,7 +553,56 @@ index 14728df..34fd415 100644
              metadata = json.loads(sidecar.read_text(encoding="utf-8"))
              embed_mp4_metadata(video, metadata, self.config.ffmpeg)
              return self.store.update(job_id, status="completed", progress=1.0, phase="完了", error=None, finished_at=utcnow())
-@@ -234,8 +233,8 @@ class JobRunner:
+@@ -193,6 +199,25 @@ class JobRunner:
+                 self._active_kind = None
+ 
+     def _run_control(self, control: dict[str, Any]) -> None:
++        if not os.environ.get("MANGAI_GPU_STATE"):
++            return self._run_control_leased(control)
++        from mangai_gpu import GpuLease
++        try:
++            with GpuLease("h3", "H3 モデル選択確認", cancelled=self._cancel.is_set):
++                try:
++                    self._run_control_leased(control)
++                    if self._control_status.get("state") == "error":
++                        raise RuntimeError(self._control_status.get("error") or "H3モデル選択に失敗しました")
++                finally:
++                    self.engine.release()
++            with self._condition:
++                if self._control_status.get("state") == "loaded":
++                    self._control_status.update(state="pending_model", phase="選択を確認しました。GPUは作画時に読み込みます")
++        except Exception as exc:
++            with self._condition:
++                self._control_status.update(state="error", error=str(exc))
++
++    def _run_control_leased(self, control: dict[str, Any]) -> None:
+         revision = int(control["revision"])
+ 
+         def progress(value: float, phase: str) -> None:
+@@ -231,11 +256,31 @@ class JobRunner:
+                     )
+ 
+     def _run(self, job: dict[str, Any]) -> None:
++        if not os.environ.get("MANGAI_GPU_STATE"):
++            return self._run_leased(job)
++        from mangai_gpu import GpuLease
++        try:
++            with GpuLease("h3", f"H3 {job.get('kind', 'generate')}", cancelled=self._cancel.is_set,
++                          progress=lambda message: self.store.update(job["id"], phase=message)):
++                try:
++                    self._run_leased(job)
++                    outcome = self.store.get(job["id"])
++                    if outcome["status"] == "cancelled":
++                        raise InterruptedError("H3をキャンセルしました")
++                    if outcome["status"] == "failed":
++                        raise RuntimeError(outcome.get("error") or "H3生成に失敗しました")
++                finally:
++                    self.engine.release()
++        except Exception as exc:
++            if self.store.get(job["id"])["status"] not in {"failed", "cancelled"}:
++                self.store.update(job["id"], status="cancelled" if self._cancel.is_set() else "failed", phase="GPU待機を終了", error=str(exc), finished_at=utcnow())
++
++    def _run_leased(self, job: dict[str, Any]) -> None:
          job_id = job["id"]
          started = utcnow()
          date_dir = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
@@ -546,7 +613,7 @@ index 14728df..34fd415 100644
          kind = job.get("kind", "generate")
          output = output_dir / f"h3-{kind}-{job_id[:8]}.mp4"
  
-@@ -246,7 +245,9 @@ class JobRunner:
+@@ -246,7 +291,9 @@ class JobRunner:
  
          generated = False
          sidecar = output.with_suffix(".json")
@@ -556,7 +623,7 @@ index 14728df..34fd415 100644
              if kind == "generate":
                  engine_info = self.engine.generate(job["resolved"], output, progress, self._cancel)
              else:
-@@ -254,13 +255,31 @@ class JobRunner:
+@@ -254,13 +301,31 @@ class JobRunner:
                  # before loading/running a video model on the same GPU.
                  self.engine.release()
                  source_info = job["resolved"]["source"]
@@ -590,7 +657,7 @@ index 14728df..34fd415 100644
                  progress(0.97, "出力を検証しています")
                  probe = inspect_video(output)
                  expected_width, expected_height = int(job["resolved"]["width"]), int(job["resolved"]["height"])
-@@ -274,13 +293,13 @@ class JobRunner:
+@@ -274,13 +339,13 @@ class JobRunner:
                      raise RuntimeError(f"Output duration mismatch: {probe['duration_seconds']} != {expected_duration}")
                  if bool(probe["has_audio"]) != bool(source_info["has_audio"]):
                      raise RuntimeError("Output audio-stream preservation check failed")
@@ -606,7 +673,7 @@ index 14728df..34fd415 100644
                      raise RuntimeError(f"Output frame count mismatch: {probe['frame_count']} != {expected_frames}")
                  engine_info["output_validation"] = probe
              generated = True
-@@ -308,7 +327,7 @@ class JobRunner:
+@@ -308,7 +373,7 @@ class JobRunner:
                  "started_at": started,
                  "finished_at": utcnow(),
              }
@@ -615,7 +682,7 @@ index 14728df..34fd415 100644
              with self._condition:
                  if self._cancel.is_set():
                      output.unlink(missing_ok=True)
-@@ -316,8 +335,8 @@ class JobRunner:
+@@ -316,8 +381,8 @@ class JobRunner:
                      raise GenerationCancelled("cancelled during metadata finalization")
                  self.store.update(
                      job_id, status="completed", progress=1.0, phase="完了",
@@ -626,7 +693,7 @@ index 14728df..34fd415 100644
                  )
          except GenerationCancelled:
              output.unlink(missing_ok=True)
-@@ -331,10 +350,12 @@ class JobRunner:
+@@ -331,10 +396,12 @@ class JobRunner:
              details = traceback.format_exc(limit=12)
              recovery = {}
              if generated and output.is_file():

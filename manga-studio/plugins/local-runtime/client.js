@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
   const {SettingsFormModel,settingsTextField,settingsNumberField,SettingsForm,SettingsValueField}=require('@deepseek-ai/dsh-client-ui-primitives');
   function SearchCard(props){
     const state=props.useSearchCard(s=>s);
-    if(props.view==='summary')return 'Bing RSS / SearXNGで検索し、ローカルQwenが結果を読み取ります。APIキーは不要です。';
+    if(props.view==='summary')return 'Bing RSS / SearXNGで検索し、常駐A1が結果を読み取ります。APIキーは不要です。';
     return jsxs(SettingsForm,{labels:{unavailable:'検索機能を利用できません',readOnly:'設定は読み取り専用です',saveFailed:'設定を保存できませんでした',save:'保存',saving:'保存中…'},state,onSave:props.save,onDiscard:props.discard,children:[
       jsx('p',{children:'検索語は選択した検索サービスへ送信されます。回答の作成はローカルモデルが行います。'}),
       ...[['engine','検索サービス','bing または searxng'],['baseURL','検索URL','Bingの既定値は空欄。SearXNGは http://localhost:8080/search など'],['timeoutMs','タイムアウト（ミリ秒）','1000〜120000']].map(([field,label,hint])=>jsx(SettingsValueField,{id:`mang-ai-search-${field}`,label,hint,overriddenLabel:'変更済み',resetLabel:'既定値に戻す',invalidLabel:'有効な値を入力してください',disabled:!state.writable,numeric:field==='timeoutMs',...state[field],onEdit:text=>props.edit(field,text),onReset:()=>props.resetField(field)},field))

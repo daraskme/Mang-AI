@@ -20,6 +20,9 @@ export class MediaGallery {
     }
     const projects=s.store.db.prepare('SELECT id,body FROM projects ORDER BY rowid DESC').all();
     for(const row of projects){const p=JSON.parse(row.body),item={id:'p-'+p.id,group:'projects',title:p.title,subtitle:`${p.pages.length}ページ · 第${p.revision}版`,projectId:p.id,count:p.pages.length,updatedAt:p.updatedAt};this.collections.set(item.id,item);items.push(item);}
+    for(const row of s.store.db.prepare("SELECT id,session,body FROM integrations WHERE kind='video-project' ORDER BY rowid DESC").all()){
+      const p=JSON.parse(row.body),root=s.store.directory(row.session),item={id:'v-'+row.id,group:'videos',title:p.title,subtitle:`${p.mediaIds.length}件の生成・修正版`,sessionKey:row.session,mediaIds:p.mediaIds,root,count:p.mediaIds.length,updatedAt:p.updatedAt};this.collections.set(item.id,item);items.push(item);
+    }
     const sessions=s.store.db.prepare("SELECT DISTINCT session FROM integrations WHERE kind IN ('media','edit-asset')").all();
     for(const {session} of sessions){const project=projects.find(p=>p.id===session),p=project?JSON.parse(project.body):null;const item={id:'s-'+session,group:'sessions',title:p?.title||`セッション ${session.slice(0,8)}`,subtitle:'生成画像・動画・編集履歴',root:s.store.directory(session)};this.collections.set(item.id,item);items.push(item);}
     for(const [id,title,path]of [['krea','Krea 2の生成履歴','../krea2-darask/outputs'],['h3','H3の生成履歴','../minimaxH3-darask/outputs'],['longvideo','長尺動画の生成履歴','../work/longvideo']]){
@@ -46,6 +49,7 @@ export class MediaGallery {
         for(const entry of await readdir(dir,{withFileTypes:true})){
           if(entry.name.startsWith('.')||['exports','requests','metadata','previews'].includes(entry.name))continue;
           const file=join(dir,entry.name);
+          if(c.mediaIds&&!c.mediaIds.some(id=>entry.name.startsWith(id+'.'))&&!entry.isDirectory())continue;
           if(entry.isDirectory()){await visit(file,depth+1);continue;}
           const suffix=extname(entry.name).toLowerCase();if(!images.has(suffix)&&!videos.has(suffix))continue;
           const path=await realpath(file).catch(()=>null);if(!path||!inside(base,path))continue;

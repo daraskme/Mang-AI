@@ -9,11 +9,12 @@ import { packageRoot } from './config.js';
 import { LocalStudios } from './local-studios.js';
 import { MediaEdits } from './media-edits.js';
 import { WorkflowProgress } from './progress.js';
+import { writePlan, validatePlan, applyPlan, planningContext, visualContinuity } from './manga-planning.js';
 
 /** Session-owned authoring and a single GPU queue shared by the DSH plugin. */
 export class MangaService {
-  constructor(config, subprocess, {creative=writeScript}={}) {
-    this.config=config; this.subprocess=subprocess; this.creative=creative;
+  constructor(config, subprocess, {creative=writeScript,planner=writePlan}={}) {
+    this.config=config; this.subprocess=subprocess; this.creative=creative;this.planner=planner;
     this.store=new Store(config.dataDir); this.store.recoverJobs();
     this.studios=new LocalStudios(config,this.store,subprocess);
     this.edits=new MediaEdits(this);
@@ -24,6 +25,34 @@ export class MangaService {
   status(session) {
     const p=this.store.get(sessionKey(session));
     return {project:p,jobs:this.store.jobs(p.id),warnings:letteringWarnings(p)};
+  }
+  async plan(session,{stage,instruction,pageId,revision,pageCount},signal) {
+    text(instruction,'制作指示');
+    const project=this.store.get(sessionKey(session));
+    if(project.revision!==revision)throw Error(`別の操作で更新されています。現在のrevisionは${project.revision}です。manga_statusで確認し、その値をそのまま指定してください。成功時だけrevisionが更新されます。`);
+    if(pageCount!==undefined)integer(pageCount,'ページ数',1,32);
+    if(stage==='all'){
+      // Each stage is separately persisted and validated; a failed run can resume.
+      let current=project,result;
+      const run=async(next,id)=>{result=await this.plan(session,{stage:next,pageId:id,instruction,pageCount,revision:current.revision},signal);current=result.project;};
+      if(!current.production?.settings)await run('settings');
+      if(!current.production?.pages)await run('pages');
+      if(pageCount!==undefined&&current.production.pages.pages.length!==pageCount)throw Error('保存済みページ数が指定と異なります。pages工程で配分を修正してください');
+      for(const page of current.production.pages.pages)if(!current.production.prompts?.[page.id])await run('prompts',page.id);
+      return {project:current,next:'lettering_review',trace:result?.trace};
+    }
+    planningContext(project,stage,pageId);
+    return this.progress.track(project.id,stage,async()=>{
+      const constrained=pageCount===undefined?instruction:`${instruction}\n必須条件：作品全体は${pageCount}ページです。ページごとのコマ数と混同しないでください。`;
+      const result=await this.planner({...project,generationSelection:this.studios.models.selected(session,'krea')},this.config.gemma,{stage,instruction:constrained,pageId},signal);
+      signal.throwIfAborted();
+      const value=validatePlan(stage,result.value,project,pageId);
+      if(stage==='pages'&&pageCount!==undefined&&value.pages.length!==pageCount)throw Error(`ページ数は${pageCount}ページの指定ですがGemmaは${value.pages.length}ページを返しました。pages工程を修正してください`);
+      const dir=join(this.store.directory(project.id),'requests');await mkdir(dir,{recursive:true});
+      const trace=join(dir,`gemma-${stage}-${randomUUID()}.json`);await writeFile(trace,JSON.stringify(result,null,2));
+      const updated=this.store.update(project.id,revision,p=>applyPlan(p,stage,value,{pageId,instruction,trace}));
+      return {project:updated,trace,next:stage==='settings'?'pages':stage==='pages'?'prompts':'lettering_review'};
+    });
   }
   async draft(session,{instruction,pageCount,revision},signal) {
     integer(pageCount,'ページ数',1,32); text(instruction,'指示');
@@ -58,6 +87,7 @@ export class MangaService {
   async render(session,{pageId,regenerate=false,seed=0,model_id,preset,loras}) {
     if(this.closed) throw new Error('Studio は終了中です');
     const p=this.store.get(sessionKey(session)), page=getPage(p,pageId);
+    if(p.production && (!p.production.pages||!p.production.prompts?.[pageId]))throw Error('設定またはページ配分が変更されています。このページのプロンプトをGemmaで更新してください');
     if(p.approved!==scriptDigest(p)) throw new Error('編集画面で脚本を確認し「脚本を確定」を押してください');
     integer(seed,'seed',0,2147483647);
     if(this.store.jobs(p.id).some(j=>j.pageId===pageId && ['queued','running'].includes(j.status))) throw new Error('このページは生成中です。manga_status で進捗を確認してください');
@@ -68,7 +98,8 @@ export class MangaService {
     if(preset!==undefined && !['turbo8','fast4','raw'].includes(preset))throw new Error('preset が不正です');
     if(loras!==undefined && (!Array.isArray(loras)||loras.some(l=>!l||typeof l.id!=='string'||(l.weight!==undefined&&(!Number.isFinite(l.weight)||Math.abs(l.weight)>4)))))throw new Error('loras が不正です');
     if(k.backend!=='studio' && [model_id,preset,loras].some(v=>v!==undefined))throw new Error('モデル・LoRAの個別指定には Krea Studio 接続が必要です');
-    const generation=structuredClone({model_id:model_id??k.model,preset:preset??k.preset??'turbo8',loras:loras??k.loras??[]});
+    const selected=this.studios.models.generation(session,'krea');
+    const generation=structuredClone({model_id:model_id??selected.model_id??k.model,preset:preset??k.preset??'turbo8',loras:loras??selected.loras??k.loras??[]});
     if(k.backend==='studio')await this.studios.request('krea','/health');
     else {
       if(!k.weights) throw new Error(`${k.checkpoint==='oss_raw'?'OSS_RAW':'OSS_TURBO'} または krea.weights に重みのパスを設定してください`);
@@ -92,9 +123,12 @@ export class MangaService {
     const requests=panels.map((panel,i)=>{
       const [, ,w,h]=LAYOUTS[page.layout][page.panels.findIndex(p=>p.id===panel.id)];
       const scale=Math.min(k.width/w,k.height/h);
+      const fixed=visualContinuity(project,page,panel);
+      const prompt=`${project.style}\n${fixed||'Character consistency notes: '+project.characters}\n${panel.artPrompt}\nOne single manga panel. Artwork only, no lettering, no speech bubbles, no captions, no written words, no watermark. Leave breathing room for separate lettering.`;
+      if(k.backend==='studio'&&prompt.length>4000)throw Error(`${panel.id}の設定と作画指示がKreaの4000文字上限を超えています。固定外見を保ってGemmaで簡潔にしてください`);
       return {id:panel.id,output:join(dir,`${panel.id}-${job.id}.png`),seed:(job.seed+i)%2147483648,
         width:Math.max(256,Math.round(w*scale/16)*16),height:Math.max(256,Math.round(h*scale/16)*16),
-        prompt:`${project.style}\nCharacter consistency notes: ${project.characters}\n${panel.artPrompt}\nOne single manga panel. Artwork only, no lettering, no speech bubbles, no captions, no written words, no watermark. Leave breathing room for separate lettering.`};
+        prompt};
     });
     const request={...k,panels:requests};
     job.outputs=requests.map(req=>({id:req.id,image:`images/${req.id}-${job.id}.png`}));
@@ -110,9 +144,11 @@ export class MangaService {
           job.completed.push(req.id);this.store.saveJob(job);
         }
       } else {
+      const argv=[k.python,join(packageRoot,'python/render_krea.py')];
+      if(this.config.gpu?.enabled)argv.unshift(k.python,join(packageRoot,'python/mangai_gpu.py'),'krea','--');
       const handle=this.subprocess.spawn({
-        argv:[k.python,join(packageRoot,'python/render_krea.py')],cwd:k.repo,
-        env:{[k.checkpoint==='oss_raw'?'OSS_RAW':'OSS_TURBO']:k.weights,PYTHONUNBUFFERED:'1'},
+        argv,cwd:k.repo,
+        env:{[k.checkpoint==='oss_raw'?'OSS_RAW':'OSS_TURBO']:k.weights,PYTHONUNBUFFERED:'1',...this.config.gpu?.enabled?{MANGAI_GPU_STATE:join(packageRoot,'../work/gpu')}:{ }},
         stdio:{stdin:{data:JSON.stringify(request)},stdout:'pipe',stderr:{maxBytes:32768}},graceMs:5000,signal,
       });
       let buffer='';

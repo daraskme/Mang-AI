@@ -11,7 +11,8 @@ DeepSeek Harness を漫画制作向けに拡張するプラグインです。DSH
 | 担当 | 使用するもの |
 |---|---|
 | 日本語脚本・台詞 | Gemma Ortenzya 31B のローカル OpenAI 互換 API |
-| コーディング・制作進行・ツール操作 | Qwen/Qwen3.8-27B のローカル OpenAI 互換 API と DSH |
+| 制作進行・ツール操作 | Agents A1 4B Q8を常駐させるローカルAPIとDSH |
+| コーディング | Qwen3.8 Flash Next Q8 / Strata。配置・変換済み、実機推論はVM停止待ち |
 | 文字なしのコマ絵・単画像 | 既存 Krea 2 Studio の公式 Diffusers Python 推論。既定は Turbo |
 | 動画・音声 | 既存 MiniMax H3 Studio |
 | 自然言語キャプション | Caption Studio の画像認識 Gemma |
@@ -24,7 +25,7 @@ Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の
 
 ## 現在の状態と起動
 
-アプリ、依存関係、Krea 2・H3・キャプション・LoRA 学習環境を `/mnt/solidigm-b/Mang-AI/` に配置しています。エージェントは既存のQwen3.8 27B TWIN-TURBO Fable Cold Fusion Q8、日本語創作はOrtenzya 31B Q8、キャプションはUNSEEN Gemma 4 26B Q4と画像プロジェクターです。Qwenと創作用Gemmaは専用llama.cppルーターの `127.0.0.1:1234` に接続済みです。
+アプリ、依存関係、Krea 2・H3・キャプション・LoRA 学習環境を `/mnt/solidigm-b/Mang-AI/` に配置しています。司令塔はAgents A1 4B Q8、日本語創作はOrtenzya 31B Q8、キャプションはUNSEEN Gemma 4 26B Q4と画像プロジェクターです。共通APIは `127.0.0.1:1234`、A1は1240で常駐、Gemmaは1241、コーディング用Strataは1242で必要時に起動します。Qwen Flash Next Q8の実機推論は利用者によるVM停止待ちです。[構成・導入・検証範囲](docs/local-agent-architecture.md) を参照してください。
 
 ```bash
 cd /mnt/solidigm-b/Mang-AI/manga-studio
@@ -43,11 +44,13 @@ DSH は空きポートで起動し、URL を表示します。自動でブラウ
 
 [studio.config.example.json](studio.config.example.json) を元に作成された `studio.config.json` を編集します。相対パスは設定ファイルの場所を基準にします。設定変更後は DSH を再起動してください。
 
-### Gemma / Qwen
+漫画制作の工程とモデルの役割は [漫画制作の方針](docs/manga-production-policy.md) にまとめています。エージェントは `manga_workflow_guide` で全体または必要な工程を参照できます。GPU切替を含む構成変更の設計は [常駐エージェントとGPU工程管理](docs/local-agent-architecture.md) を参照してください。
 
-LM Studio や llama.cpp などで各モデルを OpenAI Chat Completions 互換 API として起動し、`gemma.baseURL` / `gemma.model` と `qwen.baseURL` / `qwen.model` を実際の値にします。既定 URL は `http://127.0.0.1:1234/v1`。model には **`GET /v1/models` が返す id** を設定してください。Hugging Face のリポジトリ名と一致するとは限りません。同じサーバーでもモデル ID で振り分けます。別ポートでも構いません。
+### A1 / Gemma / Qwen
 
-環境変数 `MANGA_GEMMA_URL`、`MANGA_GEMMA_MODEL`、`MANGA_QWEN_URL`、`MANGA_QWEN_MODEL` でも上書きできます。認証がある場合だけ `MANGA_GEMMA_API_KEY` / `MANGA_QWEN_API_KEY` を環境変数で渡してください。Qwen の認証なしサーバーには起動スクリプトが `local` を仮のキーとして使います。
+LM Studio や llama.cpp などで各モデルを OpenAI Chat Completions 互換 API として起動し、`agent`（司令塔）、`gemma`（創作）、`coder`（コーディング）の `baseURL` / `model` を実際の値にします。既定URLは `http://127.0.0.1:1234/v1`。modelには **`GET /v1/models` が返すid** を指定します。`qwen` は旧構成の互換設定です。管理下のGPU切替を使う場合は [常駐モデルの導入手順](docs/resident-model-setup.md) に従います。
+
+環境変数 `MANGA_AGENT_URL` / `MANGA_AGENT_MODEL`、`MANGA_GEMMA_URL` / `MANGA_GEMMA_MODEL`、`MANGA_CODER_URL` / `MANGA_CODER_MODEL` でも上書きできます。認証がある場合だけ各役割の `MANGA_*_API_KEY` を環境変数で渡します。認証なしローカルAPIには起動スクリプトが `local` を仮のキーとして使います。
 
 ### 既存の Krea 2・H3・キャプション環境
 
@@ -68,11 +71,13 @@ Krea 2 の新しい画像は `krea2-darask/outputs/`、H3 は `minimaxH3-darask/
 
 ## 日本語エージェントとプラグイン
 
-エージェントプリセットは「Mang-AI · Qwen3.8」の1つです。DeepSeekのモデル・認証・検索経路を無効にし、DSHのツール実行機構をローカルQwenに接続しています。画面と公式プラグインの設定表示は日本語化しています。
+エージェントプリセットは「Mang-AI」の1つです。DeepSeekのモデル・認証・検索経路を無効にし、DSHのツール実行機構をローカルA1に接続しています。画面と公式プラグインの設定表示は日本語化しています。
 
-実QwenによるWeb検索と生成画面ツール呼び出し、実Ortenzyaによる1ページ3コマの日本語脚本JSON生成・保存を確認しています。モデルは必要時に読み込み、ルーター内では1モデルずつ切り替えます。
+旧Qwen 27BによるWeb検索と生成画面ツール呼び出し、実Ortenzyaによる日本語脚本の生成記録があります。新しいA1でもツール呼び出しと画像入力を確認しました。A1は常駐し、大規模モデルは共通GPUキューで順に実行・解放します。画像認識には読順や動作の誤認があるため、設定・脚本・利用者の指摘を併せて判断します。
 
-Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。チーム・サブエージェント・自動承認レビューは共通モデル設定を使います。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルQwenが作ります。
+Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。通常はA1を使い、コーディングのsubagentだけ `manga-coder / qwen3.8-flash-next-q8-strata` を指定します。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルモデルが作ります。
+
+制作スペースの **モデル・LoRA** ではKrea/Kroma・H3・長尺環境の一覧を表示し、モデル、LoRAごとの強度と人物/Style用途をセッションに保存できます。自分のPNG/JPEG/WebPをサムネイルとして登録できます。動画生成の作品名を指定すると、ギャラリーの **動画作品** に生成・高解像度化した版をまとめます。既存動画はセッションごとの「既存の動画」にまとめます。
 
 ## メディアギャラリーと整理済み素材
 
@@ -272,6 +277,8 @@ Krea ジョブは全セッションで直列実行します。`manga_cancel` ま
 ## 検証と対応版
 
 `node_modules/.bin/node tests/workspace-browser.mjs` は統合画面の作品絞り込み、全素材表示、未保存編集の保持と移動保護、進捗、空のセッション、モバイル表示を検証します。`TEST_URL='<起動中DSHのURL>' node_modules/.bin/node tests/workspace-dsh-browser.mjs` は通常GUIでチャット横のパネルとセッション切替を確認します。実モデルを読み込まず、後者もテスト入力を保存しません。
+
+`node_modules/.bin/node tests/models-browser.mjs` はモデル/LoRAのセッション別選択、個別強度・用途、サムネイル登録、未保存値の保持を検証します。`python3 -m unittest discover -s tests -p 'test_*gpu*.py'` はGPUを使わず共通待機・中止と長尺サーバーの失敗保持を検証します。実A1→Gemma→Kromaの試験手順は [常駐モデルの導入記録](docs/resident-model-setup.md#検証) を参照してください。
 
 ```bash
 npm test

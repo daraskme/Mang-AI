@@ -6,11 +6,16 @@ const provider={type:'string',enum:['krea','h3','caption','longvideo'],required:
 const loras={type:'array',items:{type:'object',additionalProperties:true},description:'media_status の LoRA 一覧から指定。Krea: {id,weight,enabled}、H3: {path,weight,enabled}'};
 
 export function registerStudioTools(register,studios) {
+  register('media_prompt','Gemma 4に画像・動画・長尺ショットの自然言語プロンプトを作らせ、このセッションへ保存する。指定モデル/LoRAと設定を引き継ぐ。生成前や修正指示時に使う。',{
+    provider:{type:'string',enum:['krea','h3','longvideo'],required:true},instruction:string('利用者の制作・修正指示'),context:object('人物・背景・前後の状態・既存プロンプト・保持する点'),shot_seconds:{type:'number',description:'長尺の1ショット秒数。省略時8'},
+  },(a,e)=>studios.prompt(e.agent.id,a,e.signal));
   register('media_library','整理済みの既存LoRAとデータセットを検索する。返されたloraIdを生成に使い、画像データセットのpathをcaption_openに渡す。中間チェックポイントはtrainingRun内に保管される。',{
     family:{type:'string',enum:['krea2','h3']},kind:{type:'string',enum:['lora','dataset','training-run']},query:string('名前・分類による絞り込み',false),offset:integer('先頭位置'),limit:integer('1〜100、既定40'),
   },a=>studios.library(a));
   const longArgs={prompt:string('最初の段落は共通設定。空行で区切った次の段落から1段落1ショット。台詞は二重引用符'),model:string('media_status(longvideo) のチェックポイント名',false),shot_seconds:{type:'number',description:'1ショット1〜15秒、既定8。全体120秒まで'},megapixels:{type:'number',description:'0.2〜2MP。確認用0.4、仕上げ0.8'},steps:integer('蒸留済みモデルでは通常8'),seed:integer('固定seed'),resolution:{type:'string',enum:['16:9','9:16','4:3','3:4','1:1','21:9','9:21']},firstFramePath:string('先頭画像の絶対パス',false),anchor:string('外見・場所の固定情報',false),character_memory:string('人物の記憶・共通情報',false),latent_upscale:string('media_status に表示される潜在アップスケーラ名、既定off',false),latent_upscale_scale:{type:'number'},upscale:{type:'string',enum:['off','lanczos']},upscale_target_short_edge:integer('画素拡大後の短辺サイズ'),shift_video:{type:'number'},shift_audio:{type:'number'}};
   longArgs.loras=loras;
+  longArgs.projectTitle=string('動画作品名。同じ名前のショット・修正版をギャラリーでまとめる',false);
+  longArgs.collectionId=string('既存の動画作品ID',false);
   register('h3_longvideo_plan','H3長尺動画の段落構成と予定尺を検査する。GPU生成は行わない。',longArgs,a=>studios.planLongVideo(a));
   register('h3_longvideo_generate','Smite79 H3-LongVideos で複数ショットを接続して動画と音声を生成する。蒸留済みDaSiWa v3を既定とし、追加の加速LoRAは重ねない。',longArgs,(a,e)=>studios.generate(e.agent.id,'longvideo',a,e.signal));
   register('media_upscale','このセッションで生成完了した画像・動画を拡大する。Kreaは低denoiseのHiresリファイン。H3は画素アップスケールで音声を維持する。',{
@@ -22,6 +27,7 @@ export function registerStudioTools(register,studios) {
     prompt:string('自然言語の画像生成指示、4000文字以内'),width:integer('16の倍数'),height:integer('16の倍数'),seed:integer('乱数seed'),steps:integer('生成ステップ数'),preset:{type:'string',enum:['turbo8','fast4','raw']},model_id:string('media_status のモデルID',false),loras,
   },(a,e)=>studios.generate(e.agent.id,'krea',a,e.signal));
   register('h3_generate','MiniMax H3 で動画・音声を生成し、すぐジョブIDを返す。画像から動画を作る場合は firstFramePath に画像パスを指定できる。',{
+    projectTitle:string('動画作品名。同じ作品のショット・修正版をまとめる',false),collectionId:string('既存の動画作品ID',false),
     memory_profile:{type:'string',enum:['auto','resident','shared','low_memory'],description:'Qwenとの併用はshared（TEをINT4）。生成モデルだけを使う場合はresident（TEをINT8）'},
     prompt:string('動き、被写体、カメラ、音などの生成指示'),model:string('media_status のモデル相対パス。既定 MiniMax-H3',false),width:integer('出力幅'),height:integer('出力高さ'),frames:integer('124〜345。24fps、17k+5へ調整される'),seed:integer('乱数seed'),steps:integer('ステップ数'),preset:{type:'string',enum:['balanced','quality','turbo8','turbo4']},attention:{type:'string',enum:['sage','sdpa']},latent_refine:object('Hires: {enabled:true,model:一覧の潜在upscaler,scale:1.5,strength:0.18,steps:4}。width/heightは仕上がり寸法'),firstFramePath:string('先頭画像の絶対パス',false),lastFramePath:string('末尾画像の絶対パス',false),loras,
   },(a,e)=>studios.generate(e.agent.id,'h3',a,e.signal));

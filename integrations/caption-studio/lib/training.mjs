@@ -97,7 +97,9 @@ export class Training {
     for(const command of p.commands){
       if(this.current.state==='stopping')throw new Error('学習を停止しました');this.current.phase=command.name;
       await new Promise((resolve,reject)=>{
-        const child=spawn(path.join(this.root,'runtime/python-run'),command.args,{cwd:path.join(this.root,'vendor/musubi-tuner'),detached:true,env:{...process.env,PYTHONUNBUFFERED:'1',CUDA_VISIBLE_DEVICES:'0',OMP_NUM_THREADS:'4',TOKENIZERS_PARALLELISM:'false'},stdio:['ignore','pipe','pipe']});this.child=child;
+        const executable=path.join(this.root,'runtime/python-run'),managed=!!process.env.MANGAI_GPU_STATE;
+        if(managed&&(!process.env.MANGAI_GPU_PYTHON||!process.env.MANGAI_GPU_RUNNER))throw Error('共通GPUキューの実行設定がありません');
+        const child=spawn(managed?process.env.MANGAI_GPU_PYTHON:executable,managed?[process.env.MANGAI_GPU_RUNNER,'training','--',executable,...command.args]:command.args,{cwd:path.join(this.root,'vendor/musubi-tuner'),detached:true,env:{...process.env,PYTHONUNBUFFERED:'1',CUDA_VISIBLE_DEVICES:'0',OMP_NUM_THREADS:'4',TOKENIZERS_PARALLELISM:'false'},stdio:['ignore','pipe','pipe']});this.child=child;
         const write=chunk=>{const text=chunk.toString();this.log(text);fs.appendFile(path.join(p.run,'train.log'),text).catch(()=>{});};
         child.stdout.on('data',write);child.stderr.on('data',write);child.on('error',reject);child.on('close',(code,signal)=>{this.child=null;code===0?resolve():reject(new Error(`${command.name}が終了しました (${code??signal})。ログを確認してください。`));});
       });

@@ -5,7 +5,7 @@ import { packageRoot, loadConfig } from '../src/config.js';
 export async function tempRoot(name='case') {
   const base=join(packageRoot,'.test-output');await mkdir(base,{recursive:true});return mkdtemp(join(base,name+'-'));
 }
-export function config(root) {const c=loadConfig();c.dataDir=root;c.editorPort=0;c.krea.backend='python';return c;}
+export function config(root) {const c=loadConfig();c.dataDir=root;c.editorPort=0;c.krea.backend='python';c.gpu.enabled=false;return c;}
 export const script={pages:[{layout:'上大＋下2',purpose:'雨上がりの駅で、手紙を渡す。',panels:[
   {action:'ホームで手紙を差し出す。',artPrompt:'A woman in a navy coat offers a folded letter at a quiet train platform after the rain.',dialogue:[{speaker:'紗季',text:'これ、あなたに。'}]},
   {action:'受け取った封筒を見る。',artPrompt:'Close-up of a man in a tan jacket looking down at a folded letter in his hands.',dialogue:[{speaker:'悠',text:'今、読んでもいい？'}]},

@@ -7,6 +7,8 @@ import { basename, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { sessionKey } from './store.js';
 import { planLongVideo, submitLongVideo, longVideoJob } from './longvideo.js';
+import {ModelLibrary} from './model-library.js';
+import {writeMediaPrompt} from './creative.js';
 
 const units={krea:'krea2-studio.service',h3:'h3studio.service',caption:'mang-ai-caption.service',longvideo:'mang-ai-longvideo.service'};
 const active=s=>['queued','running','loading','generating','stopping','cancelling'].includes(s);
@@ -16,6 +18,24 @@ export class LocalStudios {
   constructor(config,store,subprocess) {
     this.config=config;this.store=store;this.subprocess=subprocess;this.tail=Promise.resolve();
     store.db.exec('CREATE TABLE IF NOT EXISTS integrations (id TEXT PRIMARY KEY, session TEXT NOT NULL, kind TEXT NOT NULL, body TEXT NOT NULL)');
+    this.models=new ModelLibrary(this);
+    this.collectExistingVideos();
+  }
+  collectExistingVideos(){
+    const groups=this.store.db.prepare("SELECT id,session,body FROM integrations WHERE kind='video-project'").all();
+    const assigned=new Set(groups.flatMap(row=>JSON.parse(row.body).mediaIds.map(id=>row.session+':'+id)));
+    const ungrouped=new Map();
+    for(const row of this.store.db.prepare("SELECT id,session,body FROM integrations WHERE kind='media'").all()){
+      if(!['h3','longvideo'].includes(JSON.parse(row.body).provider)||assigned.has(row.session+':'+row.id))continue;
+      if(!ungrouped.has(row.session))ungrouped.set(row.session,[]);ungrouped.get(row.session).push(row.id);
+    }
+    // Stored session keys are already hashed; avoid rehashing through save().
+    for(const [session,ids]of ungrouped){
+      const existing=groups.find(row=>row.session===session&&JSON.parse(row.body).legacyCollection);
+      const body=existing?JSON.parse(existing.body):{title:'既存の動画',type:'video',mediaIds:[],legacyCollection:true,createdAt:new Date().toISOString()};
+      body.mediaIds.push(...ids);body.updatedAt=new Date().toISOString();
+      this.store.db.prepare('INSERT OR REPLACE INTO integrations VALUES (?,?,?,?)').run(existing?.id||randomUUID(),session,'video-project',JSON.stringify(body));
+    }
   }
   save(session,kind,value,id=randomUUID()) {
     this.store.db.prepare('INSERT OR REPLACE INTO integrations VALUES (?,?,?,?)').run(id,sessionKey(session),kind,JSON.stringify(value));return id;
@@ -26,6 +46,20 @@ export class LocalStudios {
     return {kind:row.kind,...JSON.parse(row.body)};
   }
   serial(fn) {const next=this.tail.then(fn);this.tail=next.catch(()=>{});return next;}
+  async gpuStatus(){
+    if(!this.config.gpu?.enabled)return {enabled:false};
+    try{
+      const url=new URL(this.config.gpu.baseURL);if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.protocol!=='http:')throw Error('GPU管理はローカル接続のみです');
+      const response=await fetch(new URL('/gpu/status',url),{signal:AbortSignal.timeout(7000)});if(!response.ok)throw Error(`HTTP ${response.status}`);
+      return {enabled:true,...await response.json()};
+    }catch(error){return {enabled:true,error:error.message};}
+  }
+  async prompt(session,args,signal){
+    const result=await writeMediaPrompt(this.config.gemma,{...args,selection:this.models.selected(session,args.provider)},signal);
+    if(args.provider==='longvideo')planLongVideo({...args,prompt:result.prompt});
+    const id=this.save(session,'creative-prompt',{provider:args.provider,...result,createdAt:new Date().toISOString()});
+    return {id,provider:args.provider,prompt:result.prompt,notes:result.notes||[],model:this.config.gemma.model};
+  }
   base(provider) {
     if(!units[provider])throw new Error('provider は krea、h3、caption、longvideo です');
     const url=new URL(this.config[provider]?.baseURL);
@@ -106,7 +140,10 @@ export class LocalStudios {
     return {provider,action,url:this.base(provider),note:'停止しました。'};
   }
   async generate(session,provider,args,signal) {
-    if(provider==='longvideo')return submitLongVideo(this,session,args,signal);
+    args={...this.models.generation(session,provider),...args};
+    const {collectionId,projectTitle,...generationArgs}=args;args=generationArgs;
+    const videoProject=provider==='h3'||provider==='longvideo'?this.videoProject(session,{id:collectionId,title:projectTitle}):null;
+    if(provider==='longvideo'){const result=await submitLongVideo(this,session,args,signal);this.attachVideo(session,videoProject.id,result.id);return {...result,collectionId:videoProject.id};}
     if(!['krea','h3'].includes(provider))throw new Error('画像は krea、動画は h3 または longvideo です');
     let body;
     if(provider==='krea')body={model_id:this.config.krea.model,preset:this.config.krea.preset||'turbo8',attention_backend:'sdpa',...args};
@@ -136,7 +173,20 @@ export class LocalStudios {
     const remoteId=job.job_id||job.id;
     if(typeof remoteId!=='string')throw new Error('生成サーバーがジョブIDを返しませんでした');
     const id=this.save(session,'media',{provider,remoteId,request:body});
-    return {id,provider,remoteId,job};
+    if(videoProject)this.attachVideo(session,videoProject.id,id);
+    return {id,provider,remoteId,job,...videoProject?{collectionId:videoProject.id}:{}};
+  }
+  videoProject(session,{id,title}={}){
+    if(id){const project=this.owned(session,id,'video-project');return {id,...project};}
+    const name=title?.trim()||'このセッションの動画';if(name.length>200)throw Error('動画作品名は200文字以内です');
+    const rows=this.store.db.prepare("SELECT id,body FROM integrations WHERE session=? AND kind='video-project'").all(sessionKey(session));
+    const existing=rows.find(row=>JSON.parse(row.body).title===name);if(existing)return {id:existing.id,...JSON.parse(existing.body)};
+    const project={title:name,type:'video',mediaIds:[],createdAt:new Date().toISOString()};return {id:this.save(session,'video-project',project),...project};
+  }
+  attachVideo(session,collectionId,mediaId){
+    this.owned(session,mediaId,'media');const project=this.owned(session,collectionId,'video-project');
+    if(!project.mediaIds.includes(mediaId))project.mediaIds.push(mediaId);
+    project.updatedAt=new Date().toISOString();delete project.kind;this.save(session,'video-project',project,collectionId);
   }
   async job(session,id,action='status',signal) {
     const ref=this.owned(session,id,'media');
@@ -176,7 +226,9 @@ export class LocalStudios {
     const job=await this.request(ref.provider,ref.provider==='krea'?'/api/upscale':'/api/jobs/upscale',{body,signal});
     const remoteId=job.job_id||job.id;
     if(typeof remoteId!=='string')throw Error('アップスケールのジョブIDがありません');
-    return {id:this.save(session,'media',{provider:ref.provider,remoteId,request:body,parent:id}),provider:ref.provider,job};
+    const nextId=this.save(session,'media',{provider:ref.provider,remoteId,request:body,parent:id});
+    for(const row of this.store.db.prepare("SELECT id,body FROM integrations WHERE session=? AND kind='video-project'").all(sessionKey(session)))if(JSON.parse(row.body).mediaIds.includes(id))this.attachVideo(session,row.id,nextId);
+    return {id:nextId,provider:ref.provider,job};
   }
   async renderKrea(request,signal,onJob=()=>{},onProgress=()=>{}) {
     const submitted=await this.request('krea','/api/generate',{body:{...request,output:undefined,id:undefined,model_id:request.model_id||this.config.krea.model,preset:request.preset||this.config.krea.preset||'turbo8',attention_backend:'sdpa',loras:request.loras??this.config.krea.loras??[]},signal});
