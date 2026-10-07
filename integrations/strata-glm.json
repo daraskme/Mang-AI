@@ -1,0 +1,19 @@
+{
+  "name": "strata-glm",
+  "path": "upstream/Strata-GLM",
+  "url": "https://github.com/daraskme/Strata-GLM.git",
+  "revision": "4623f19de0e98d7666151319392bdc4d1ca8286f",
+  "private": true,
+  "optional": true,
+  "upstream": {
+    "url": "https://github.com/mw00/project-maya.git",
+    "revision": "5932f601373f53fc021f75dc55159a722c772571"
+  },
+  "llamaCppRevision": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+  "model": {
+    "repo": "unsloth/GLM-5.3-Flash-GGUF",
+    "revision": "a38483c8cd5df544f53d70fb281afe97369d5ab6",
+    "quantization": "UD-IQ4_XS",
+    "redistribute": false
+  }
+}

@@ -12,6 +12,8 @@
 
 Krea/H3/Captionへの共通GPUキュー接続も上記差分に含みます。共有モジュールは`manga-studio/python/mangai_gpu.py`、長尺Comfy拡張は`manga-studio/integrations/comfy-gpu-lease/`にあります。[常駐モデルの導入記録](../manga-studio/docs/resident-model-setup.md) の設定スクリプトで接続します。Strataの固定リビジョンも`manifest.json`に含めますが、CUDAエンジンとモデルは別途準備します。
 
+GLM用のカスタムStrataは独立した **private** リポジトリで管理し、固定版を[strata-glm.json](strata-glm.json)に記録します。通常の復元スクリプトはこの任意追加環境を取得しません。アクセス権のあるGitHubアカウントで`https://github.com/daraskme/Strata-GLM.git`を`upstream/Strata-GLM/`へcloneし、記録したコミットをcheckoutしてから同リポジトリの`README.MangAI.md`に従ってビルドします。[起動・実機検証](../manga-studio/docs/glm-custom-strata.md)も参照してください。
+
 ```bash
 python3 manga-studio/scripts/restore-integrations.py
 ```
