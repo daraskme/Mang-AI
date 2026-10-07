@@ -6,7 +6,7 @@
 
 詳しい操作・モデル構成・検証方法は [制作ツールの説明](manga-studio/README.md)、ソースの復元は [統合環境の説明](integrations/README.md) を参照してください。以下は同梱する小説執筆環境の説明です。
 
-GLM-5.3 Flashの追加候補は [実機検証の準備と未検証項目](manga-studio/docs/glm-flash-validation.md) に記録しています。既定のモデル構成へは追加せず、専用エンジンと読み取り専用の事前検査を分けて用意します。
+GLM-5.3 Flashは [実機検証記録](manga-studio/docs/glm-flash-validation.md) を保存し、利用者の指示でモデルと専用エンジンを削除しました。
 
 ## 長編小説執筆環境
 
