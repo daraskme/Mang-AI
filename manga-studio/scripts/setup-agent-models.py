@@ -47,9 +47,19 @@ SOURCES = {
     },
 }
 
+# Validation candidates are opt-in; `all` continues to install only agent/coder.
+VALIDATION_SOURCES = {
+    'glm-validation': {
+        'repo': 'unsloth/GLM-5.3-Flash-GGUF',
+        'revision': 'a38483c8cd5df544f53d70fb281afe97369d5ab6',
+        'folder': 'glm-5.3-flash-validation',
+        'files': [f'UD-IQ4_XS/GLM-5.3-Flash-UD-IQ4_XS-{i:05d}-of-00005.gguf' for i in range(1, 6)],
+    },
+}
+
 
 def download(role):
-    spec = SOURCES[role]
+    spec = {**SOURCES, **VALIDATION_SOURCES}[role]
     folder = ROOT / 'models/llm' / spec['folder']
     folder.mkdir(parents=True, exist_ok=True)
     token = hub_token()
@@ -76,7 +86,7 @@ def download(role):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('role', choices=['agent', 'coder', 'all'])
+    parser.add_argument('role', choices=[*SOURCES, *VALIDATION_SOURCES, 'all'])
     args = parser.parse_args()
     for role in SOURCES if args.role == 'all' else [args.role]:
         download(role)

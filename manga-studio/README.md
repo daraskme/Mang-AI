@@ -56,6 +56,8 @@ DSH は空きポートで起動し、URL を表示します。自動でブラウ
 
 ### A1 / Gemma / Qwen
 
+GLM-5.3 Flashの検証候補については [準備・メモリ見積もり・再開手順](docs/glm-flash-validation.md) を参照してください。`python3 manga-studio/tests/glm-validation-plan.py`（リポジトリのルートで実行）はモデルを読み込まず、未取得ファイルと空きメモリを検査します。既定のA1・Qwen構成は変更しません。
+
 LM Studio や llama.cpp などで各モデルを OpenAI Chat Completions 互換 API として起動し、`agent`（司令塔）、`gemma`（創作）、`coder`（コーディング）の `baseURL` / `model` を実際の値にします。既定URLは `http://127.0.0.1:1234/v1`。modelには **`GET /v1/models` が返すid** を指定します。`qwen` は旧構成の互換設定です。管理下のGPU切替を使う場合は [常駐モデルの導入手順](docs/resident-model-setup.md) に従います。
 
 環境変数 `MANGA_AGENT_URL` / `MANGA_AGENT_MODEL`、`MANGA_GEMMA_URL` / `MANGA_GEMMA_MODEL`、`MANGA_CODER_URL` / `MANGA_CODER_MODEL` でも上書きできます。認証がある場合だけ各役割の `MANGA_*_API_KEY` を環境変数で渡します。認証なしローカルAPIには起動スクリプトが `local` を仮のキーとして使います。
