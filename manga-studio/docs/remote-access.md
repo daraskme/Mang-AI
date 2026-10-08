@@ -2,7 +2,17 @@
 
 名前付きTunnelとCloudflare Accessを使い、Mang-AIのGUIをHTTPSの固定URLで開きます。DSH、ギャラリー、画像編集、統合生成画面は同じoriginで動き、メディア用画面は `/mang-ai/` 配下です。推論APIや各ネイティブStudioのポートはlocalhostのままにします。
 
-必要なものはCloudflareで管理するドメイン、Zero Trust、Google OAuthクライアント、cloudflaredです。PCとMang-AIを起動しておく必要があります。ルーターのポート開放は不要です。
+必要なものはCloudflareで管理するドメイン、Zero Trust、cloudflaredです。メールのワンタイムPINならGoogle OAuthクライアントは不要です。PCとMang-AIを起動しておく必要があります。ルーターのポート開放は不要です。
+
+## メールのワンタイムPINで始める
+
+1. Zero Trust → Integrations → Identity providers → Add new → **One-time PIN** を追加します。
+2. Access → ApplicationsでSelf-hostedアプリを作成し、ホスト名（例 `mangai.example.com`）を登録します。パスは空欄でホスト全体を保護します。
+3. アプリのログイン方法に **One-time PIN** を選びます。Googleでの認証を必須とするルールはこの構成では使いません。
+4. ポリシーを **Allow → Include → Emails → 許可する自分のメールアドレス** にします。EveryoneやBypassを追加しないでください。
+5. 保存後、アプリの **Application Audience (AUD) Tag** を控えて「PC側の設定」へ進みます。
+
+PINは許可ポリシーに一致するアドレスへ送られ、10分で期限切れになります。新しいPINを要求すると以前のPINは無効です。Google認証は後でログイン方法へ追加できます。[CloudflareのワンタイムPIN手順](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
 
 ## Google IDプロバイダーとAccess
 
@@ -50,10 +60,10 @@ Accessでログインした後もDSH自身の認証は保持します。起動�
 ## 確認と停止
 
 - ログアウトしたブラウザがAccessのログイン画面へ移動し、会話・画像・APIを読めないこと。
-- 許可したGoogleアカウントで会話・ギャラリー・動画Range再生・生成結果を開けること。
+- 許可したメールへのPIN、または設定済みGoogleアカウントでログインし、会話・ギャラリー・動画Range再生・生成結果を開けること。
 - 別回線のスマートフォンでも同じ動作になること。各ネイティブStudioへのlocalhostリンクはこのTunnelの対象外で、統合画面とA1のツールを使います。
 - PCがスリープすると接続できません。userサービスの自動開始はログイン状態とOSのuser manager設定に依存します。
 
 停止は `systemctl --user stop mang-ai-tunnel.service`、自動起動解除は `systemctl --user disable mang-ai-tunnel.service`。GUIのローカル利用は継続できます。
 
-ローカルのHost/Origin拒否、認証、同一URL配下のギャラリーと生成画面は自動試験に含まれます。Google認証とインターネット経由の到達確認は、それぞれのCloudflareアカウントで設定後に実施してください。
+ローカルのHost/Origin拒否、認証、同一URL配下のギャラリーと生成画面は自動試験に含まれます。PIN・Google認証とインターネット経由の到達確認は、それぞれのCloudflareアカウントで設定後に実施してください。

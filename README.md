@@ -15,7 +15,7 @@ A1を指揮役に、ローカルモデルで漫画・画像・動画・コード
 | モデル・LoRAの参考画像 | [サムネイルの設定・変更](manga-studio/docs/model-thumbnails.md) |
 | 会話と生成物を一緒に扱う | [セッションとメディア](manga-studio/docs/session-workspace.md) |
 | 生成情報の保存・投稿時の削除・進捗 | [EXIFと投稿用コピー](manga-studio/docs/generation-metadata.md) |
-| 自分の端末から外部接続 | [Cloudflare Tunnel・Google認証](manga-studio/docs/remote-access.md) |
+| 自分の端末から外部接続 | [Cloudflare Tunnel・メールPIN／Google認証](manga-studio/docs/remote-access.md) |
 | 外部環境の取得元・固定版 | [integrations](integrations/README.md) |
 | 小説執筆の規約・Skill | [小説執筆ガイド](docs/novel-writing.md)、[MANUAL](MANUAL.md) |
 | 検証資料の一覧 | [ドキュメント索引](docs/README.md) |
