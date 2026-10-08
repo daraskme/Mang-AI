@@ -2,7 +2,7 @@ const labels={pending:'未着手',optional:'任意',review:'確認・更新待�
 const el=(tag,text,className)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;};
 function duration(job){const start=Date.parse(job.startedAt),end=job.finishedAt?Date.parse(job.finishedAt):Date.now();if(!Number.isFinite(start)||!Number.isFinite(end))return '';const sec=Math.max(0,Math.floor((end-start)/1000));return `${Math.floor(sec/60)}分${sec%60}秒`+(job.finishedAt?'':'経過');}
 
-import {navigateMedia} from '/navigation.js';
+import {navigateMedia} from './navigation.js';
 
 export function mountProgress(host,{fetchSnapshot,onOpen}) {
   host.classList.add('production-progress');
@@ -46,10 +46,10 @@ export function mountProgress(host,{fetchSnapshot,onOpen}) {
   update();const stop=()=>{stopped=true;clearTimeout(timer);};window.addEventListener('pagehide',stop,{once:true});return {refresh:update,stop};
 }
 
-if(location.pathname==='/progress.html') {
+if(location.pathname.endsWith('/progress.html')) {
   const params=new URLSearchParams(location.hash.slice(1)),id=params.get('project'),token=params.get('token');
-  const base=`/api/${id}/gallery/`,headers={Authorization:`Bearer ${token}`};
-  document.getElementById('galleryLink').href='/gallery.html'+location.hash;
+  const base=`./api/${id}/gallery/`,headers={Authorization:`Bearer ${token}`};
+  document.getElementById('galleryLink').href='./gallery.html'+location.hash;
   document.getElementById('galleryLink').onclick=e=>{e.preventDefault();navigateMedia(e.currentTarget.href);};
   const request=async(action,body)=>{const r=await fetch(base+action,{method:body?'POST':'GET',headers:{...headers,...body?{'Content-Type':'application/json'}:{}},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(10000)});const result=await r.json();if(!r.ok)throw Error(result.error);return result;};
   mountProgress(document.getElementById('productionProgress'),{fetchSnapshot:()=>request('progress'+(params.get('session')?'?'+new URLSearchParams({session:params.get('session')}):'')),onOpen:async projectId=>{navigateMedia((await request('progress-open',{projectId})).url);}});

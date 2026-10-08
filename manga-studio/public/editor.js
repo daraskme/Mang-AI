@@ -1,24 +1,24 @@
-import { pageSVG, bubbleLayout } from '/render.js';
-import { LAYOUTS, PAGE_W, PAGE_H } from '/model.js';
-import { mountProgress } from '/progress.js';
-import { navigateMedia } from '/navigation.js';
+import { pageSVG, bubbleLayout } from './render.js';
+import { LAYOUTS, PAGE_W, PAGE_H } from './model.js';
+import { mountProgress } from './progress.js';
+import { navigateMedia } from './navigation.js';
 
 const $=id=>document.getElementById(id);
 const fontNote=document.createElement('p');fontNote.className='muted';fontNote.append('漫画の文字：源暎アンチック v6 · ');
-const fontLicense=document.createElement('a');fontLicense.href='/fonts/genei-antique/OFLicense.txt';fontLicense.target='_blank';fontLicense.rel='noopener';fontLicense.textContent='フォントの利用条件';fontNote.append(fontLicense);document.querySelector('.inspector-heading').append(fontNote);
+const fontLicense=document.createElement('a');fontLicense.href='./fonts/genei-antique/OFLicense.txt';fontLicense.target='_blank';fontLicense.rel='noopener';fontLicense.textContent='フォントの利用条件';fontNote.append(fontLicense);document.querySelector('.inspector-heading').append(fontNote);
 let embeddedFont;
 async function downloadFont(){
   if(!embeddedFont)embeddedFont=Promise.all([
-    fetch('/fonts/genei-antique/GenEiAntiqueNv6-M.ttf').then(async r=>{if(!r.ok)throw Error('漫画用フォントを読み込めませんでした');const blob=await r.blob();return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}),
-    fetch('/fonts/genei-antique/OFLicense.txt').then(r=>{if(!r.ok)throw Error('フォントのライセンスを読み込めませんでした');return r.text();}),
+    fetch('./fonts/genei-antique/GenEiAntiqueNv6-M.ttf').then(async r=>{if(!r.ok)throw Error('漫画用フォントを読み込めませんでした');const blob=await r.blob();return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}),
+    fetch('./fonts/genei-antique/OFLicense.txt').then(r=>{if(!r.ok)throw Error('フォントのライセンスを読み込めませんでした');return r.text();}),
   ]).then(([dataURL,license])=>({dataURL,license})).catch(error=>{embeddedFont=undefined;throw error;});
   return embeddedFont;
 }
 const hash=new URLSearchParams(location.hash.slice(1));
 const projectId=hash.get('project'),token=hash.get('token');
-const progressCSS=document.createElement('link');progressCSS.rel='stylesheet';progressCSS.href='/progress.css';document.head.append(progressCSS);
+const progressCSS=document.createElement('link');progressCSS.rel='stylesheet';progressCSS.href='./progress.css';document.head.append(progressCSS);
 const progressHost=document.createElement('section');progressHost.id='productionProgress';document.querySelector('.canvas-toolbar').after(progressHost);
-if(projectId&&token)mountProgress(progressHost,{fetchSnapshot:async()=>{const r=await fetch(`/api/${projectId}/progress`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});const data=await r.json();if(!r.ok)throw Error(data.error);return data;}});
+if(projectId&&token)mountProgress(progressHost,{fetchSnapshot:async()=>{const r=await fetch(`./api/${projectId}/progress`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});const data=await r.json();if(!r.ok)throw Error(data.error);return data;}});
 const galleryButton=document.createElement('button');galleryButton.textContent='ギャラリー';galleryButton.className='quiet';document.querySelector('.top-actions').prepend(galleryButton);
 galleryButton.onclick=()=>act(async()=>{if(hash.get('embedded')!=='1')requireSaved();navigateMedia((await api('gallery')).url);});
 let project=null,pageIndex=0,selected='',draft=null,dirty=false,busy=false,drag=null;
@@ -49,7 +49,7 @@ modelRefresh.onclick=()=>act(async()=>{const result=await api('models');const se
 const currentPage=()=>project?.pages[pageIndex];
 function message(value,error=false){$('status').textContent=value;$('status').style.color=error?'#ac4f3d':'';}
 async function api(action='',body) {
-  const response=await fetch(`/api/${projectId}${action?'/'+action:''}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},...body?{body:JSON.stringify(body)}:{}});
+  const response=await fetch(`./api/${projectId}${action?'/'+action:''}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},...body?{body:JSON.stringify(body)}:{}});
   const result=await response.json();
   if(!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
   return result;
@@ -67,7 +67,7 @@ async function load(quiet=false){
 }
 async function loadImages(){
   for(const panel of currentPage()?.panels||[]) if(panel.image&&!imageURLs.has(panel.image)){
-    const response=await fetch(`/api/${projectId}/${panel.image}`,{headers:{Authorization:`Bearer ${token}`}});
+    const response=await fetch(`./api/${projectId}/${panel.image}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!response.ok)throw new Error('画像を読み込めませんでした');
     imageURLs.set(panel.image,URL.createObjectURL(await response.blob()));
   }
@@ -155,7 +155,7 @@ $('saveScript').onclick=()=>act(async()=>{requireSaved();const result=await api(
 $('export').onclick=()=>act(async()=>{requireSaved();const result=await api('export',{});message(`保存先：${result.directory}${result.warnings.length?' ／ '+result.warnings.join(' ／ '):''}`);});
 async function svgForDownload(){
   requireSaved();const page=currentPage();if(!page)throw new Error('ページがありません');const images={};
-  for(const panel of page.panels)if(panel.image){const response=await fetch(`/api/${projectId}/${panel.image}`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw Error('書き出すコマ画像を読み込めませんでした');const blob=await response.blob();images[panel.id]=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
+  for(const panel of page.panels)if(panel.image){const response=await fetch(`./api/${projectId}/${panel.image}`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw Error('書き出すコマ画像を読み込めませんでした');const blob=await response.blob();images[panel.id]=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
   return pageSVG(page,images,false,await downloadFont());
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}

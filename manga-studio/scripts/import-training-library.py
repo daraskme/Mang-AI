@@ -79,7 +79,7 @@ def register():
         collections=[(category.name,p) for category in datasets.iterdir() if category.is_dir() for p in category.iterdir() if p.is_dir()] if family=='krea2' else [('video',p) for p in datasets.iterdir() if p.is_dir()]
         for category,folder in sorted(collections):
             files=[p for p in folder.rglob('*') if p.is_file()]
-            images=sum(p.suffix.lower() in {'.png','.jpg','.jpeg','.webp','.bmp'} for p in files)
+            images=sum(p.suffix.lower() in {'.png','.jpg','.jpeg','.webp','.bmp','.avif'} for p in files)
             videos=sum(p.suffix.lower() in {'.mp4','.webm','.mkv','.mov'} for p in files)
             captions=sum(p.suffix.lower()=='.txt' for p in files)
             missing=sum(p.is_symlink() and not p.exists() for p in folder.rglob('*'))

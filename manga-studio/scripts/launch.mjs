@@ -16,7 +16,11 @@ if(config.gpu.enabled){
 }
 const bin=join(dirname(require.resolve('@deepseek-ai/dsh/package.json')),'lib/bin.js');
 const supplied=process.argv.slice(2);
-if(!supplied.some(arg=>arg==='--port'||arg.startsWith('--port=')))supplied.push('--port','0');
+if(!supplied.some(arg=>arg==='--port'||arg.startsWith('--port=')))supplied.push('--port',String(config.remoteOrigin?(config.remotePort||17860):0));
+if(config.remoteOrigin){
+  if(!supplied.some(arg=>arg==='--public-url'||arg.startsWith('--public-url=')))supplied.push('--public-url',config.remoteOrigin);
+  supplied.push('--trusted-host',new URL(config.remoteOrigin).host);
+}
 const dshHome=process.env.DSH_HOME || resolve(packageRoot,'.dsh');
 const initialize=existsSync(join(dshHome,'profiles/manga/package.json'))?[]:['--from-default-profile','web'];
 let nativeLibraries=process.env.LD_LIBRARY_PATH||'';

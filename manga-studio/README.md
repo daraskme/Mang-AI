@@ -29,6 +29,15 @@ Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の
 
 空吹き出しの実機試験は `node tests/live-balloons.mjs`。GemmaとKromaを読み込むので、実行前にGPU・RAM負荷を通知してください。結果は `.test-output/balloons-live-*/` に保存し、空欄・本数・文字位置を目視確認します。自動フィットや全モデルの品質保証の試験ではありません。
 
+## 会話・生成物・データの管理
+
+- [セッションとメディア](docs/session-workspace.md)：入力欄の上の生成物、会話で使う参照素材、生成・編集を同じ画面で操作。
+- [生成情報と投稿用コピー](docs/generation-metadata.md)：EXIF等への条件保存、投稿用の情報削除、設定の上の全体％・工程・残り時間。
+- [サムネイル](docs/model-thumbnails.md)：Krea2/H3の実生成例を登録し、変更・解除。
+- [学習データの保存と復元](docs/training-assets.md)：AVIF、非公開HF、公式基本モデルの固定版。
+- [画像収集](docs/dataset-collection.md)：X・Pixiv・Gelbooru・Pawchive、A1の収集ツール。
+- [外部接続](docs/remote-access.md)：Cloudflare Tunnel・Google認証で同じGUIへ接続。
+
 ## 検証結果と導入時の注意
 
 GLMの最新結果は[Gen5・262K実入力検証](docs/glm-validation-2026-10-09.md)。260090入力＋512生成で17.1 tokens/s、3位置検索に成功しました。50 tokens/sと元FP8相当品質は未達／未検証です。通常設定と固定予算ベンチマークの差も同資料に記載しています。
@@ -58,7 +67,7 @@ DSH は空きポートで起動し、URL を表示します。自動でブラウ
 
 漫画制作の工程とモデルの役割は [漫画制作の方針](docs/manga-production-policy.md) にまとめています。エージェントは `manga_workflow_guide` で全体または必要な工程を参照できます。GPU切替を含む構成変更の設計は [常駐エージェントとGPU工程管理](docs/local-agent-architecture.md) を参照してください。
 
-単独制作は [画像制作](docs/image-production-policy.md)、[動画制作](docs/video-production-policy.md)、[LoRA制作](docs/lora-production-policy.md) に分けています。A1は `media_workflow_guide(workflow:image / video / lora)` で工程表を読み、必要な `section` だけ参照します。LoRAは素材収集→`@style` / `@chara`等と用途の設定→UNSEEN Gemmaでキャプション→検査・TXT保存→学習→生成比較の順です。Krea2学習は接続済み、H3新規学習・動画全体のキャプション・専用の自動収集は未統合です。H3を誤ってKrea2で学習しないよう、`lora_prepare(family:h3)` は実行前に拒否します。
+単独制作は [画像制作](docs/image-production-policy.md)、[動画制作](docs/video-production-policy.md)、[LoRA制作](docs/lora-production-policy.md) に分けています。A1は `media_workflow_guide(workflow:image / video / lora)` で工程表を読み、必要な `section` だけ参照します。LoRAは素材収集→`@style` / `@chara`等と用途の設定→UNSEEN Gemmaでキャプション→検査・TXT保存→学習→生成比較の順です。Krea2学習は接続済み、H3新規学習・動画全体のキャプションは未統合です。画像収集は別途[収集ツール](docs/dataset-collection.md)を使います。H3を誤ってKrea2で学習しないよう、`lora_prepare(family:h3)` は実行前に拒否します。
 
 ### A1 / Gemma / GLM
 
@@ -93,7 +102,7 @@ Krea 2 の新しい画像は `krea2-darask/outputs/`、H3 は `minimaxH3-darask/
 
 Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。通常はA1を使い、コーディングのsubagentだけ `manga-coder / glm-5.3-flash-orcarouter-q4-mangai` を指定します。起動済みDSHが以前のモデルを表示する場合は作業の区切りで再起動してください。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルモデルが作ります。
 
-制作スペースの **モデル・LoRA** ではKrea/Kroma・H3・長尺環境の一覧を表示し、モデル、LoRAごとの強度と人物/Style用途をセッションに保存できます。自分のPNG/JPEG/WebPをサムネイルとして登録できます。動画生成の作品名を指定すると、ギャラリーの **動画作品** に生成・高解像度化した版をまとめます。既存動画はセッションごとの「既存の動画」にまとめます。
+制作スペースの **モデル・LoRA** ではKrea/Kroma・H3・長尺環境の一覧を表示し、モデル、LoRAごとの強度と人物/Style用途をセッションに保存できます。自分のPNG/JPEG/WebP/AVIFや実生成画像をサムネイルとして登録・変更・解除できます。動画生成の作品名を指定すると、ギャラリーの **動画作品** に生成・高解像度化した版をまとめます。既存動画はセッションごとの「既存の動画」にまとめます。
 
 ## メディアギャラリーと整理済み素材
 

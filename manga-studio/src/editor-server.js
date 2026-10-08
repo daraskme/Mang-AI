@@ -8,8 +8,13 @@ import { packageRoot } from './config.js';
 import { letteringWarnings } from './render.js';
 import { MediaGallery } from './gallery.js';
 import { sessionKey } from './store.js';
+import { postingCopy } from './posting-export.js';
+import {SessionMedia} from './session-media.js';
 
 const staticFiles = {
+  '/session-media.html':['public/session-media.html','text/html; charset=utf-8'],
+  '/session-media.js':['public/session-media.js','text/javascript; charset=utf-8'],
+  '/session-media.css':['public/session-media.css','text/css; charset=utf-8'],
   '/':['public/index.html','text/html; charset=utf-8'],
   '/editor.js':['public/editor.js','text/javascript; charset=utf-8'],
   '/style.css':['public/style.css','text/css; charset=utf-8'],
@@ -67,42 +72,58 @@ export async function startEditor(service, port) {
   const token=id=>createHmac('sha256',secret).update(id).digest('hex');
   const generationSessions=new Map();
   const gallery=new MediaGallery(service),gallerySessions=new Map();
-  let origin;
+  const sessionMedia=new SessionMedia(service,gallery);
+  let origin,mountedOrigin;
   const frameOrigins=new Set();
-  const galleryUrl=(id,session)=>{gallerySessions.set(id,session);return `${origin}/gallery.html#project=${id}&token=${token('gallery:'+id)}`;};
-  const server=createServer(async(req,res)=>{
+  const galleryUrl=(id,session,base=mountedOrigin?mountedOrigin+'/mang-ai':origin)=>{gallerySessions.set(id,session);return `${base}/gallery.html#project=${id}&token=${token('gallery:'+id)}`;};
+  const handler=async(req,res,accessOrigin=origin,mount='')=>{
+    const origin=accessOrigin+mount;
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self' ${[...frameOrigins].join(' ')}`);
     const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
     try {
-      if(req.headers.host!==new URL(origin).host || (req.headers.origin && req.headers.origin!==origin)) {send(403,{error:'接続元が一致しません'});return;}
+      if(req.headers.host!==new URL(accessOrigin).host || (req.headers.origin && req.headers.origin!==accessOrigin)) {send(403,{error:'接続元が一致しません'});return;}
       const url=new URL(req.url,origin);
       if(req.method==='GET' && staticFiles[url.pathname]) {
         const [file,type]=staticFiles[url.pathname];res.setHeader('Content-Type',type);res.end(await readFile(join(packageRoot,file)));return;
       }
       const match=/^\/api\/([a-f0-9]{32})(?:\/(.*))?$/.exec(url.pathname);
       if(!match) {send(404,{error:'見つかりません'});return;}
-      const [,id,action='']=match,credential=(req.headers.authorization||'').replace(/^Bearer /,'')||(req.method==='GET'&&/^edit\/[a-f0-9-]+\/file$/.test(action)?url.searchParams.get('token')||'':'');
+      const [,id,action='']=match,credential=(req.headers.authorization||'').replace(/^Bearer /,'')||(req.method==='GET'&&(/^(edit\/[a-f0-9-]+\/file|generate\/output\/[a-f0-9-]+)$/.test(action))?url.searchParams.get('token')||'':'');
       if(action.startsWith('gallery/')) {
         const verb=action.slice(8),expected=token('gallery:'+id);
         const supplied=credential||(req.method==='GET'&&/^(file|thumb|model-thumb)\/[a-f0-9]{32}$/.test(verb)?url.searchParams.get('token')||'':'');
         if(!gallerySessions.has(id)||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){send(401,{error:'Mang-AIのメディアギャラリーから開いてください'});return;}
         const session=url.searchParams.get('session'),sessionId=session?sessionKey(session):null;
+        if(req.method==='GET'&&verb==='session-media'){send(200,await sessionMedia.snapshot(session));return;}
+        if(req.method==='POST'&&verb==='reference'){const body=await jsonBody(req);send(200,await sessionMedia.select(body.session,body.id));return;}
         if(req.method==='GET'&&verb==='models'){
           const provider=url.searchParams.get('provider')||'krea',target=session||gallerySessions.get(id);
           send(200,{...await service.studios.models.catalog(provider,{refresh:url.searchParams.get('refresh')==='1'}),selection:service.studios.models.selected(target,provider)});return;
         }
         if(req.method==='GET'&&verb.startsWith('model-thumb/')){await streamFile(req,res,await service.studios.models.thumbnailFile(verb.slice(12)));return;}
-        if(req.method==='POST'&&verb==='model-thumbnail'){const body=await jsonBody(req);send(200,await service.studios.models.thumbnail(body.key,body.dataUrl));return;}
+        if(req.method==='POST'&&verb==='model-thumbnail'){
+          const body=await jsonBody(req),models=service.studios.models;
+          const result=body.action==='candidates'?await models.thumbnailCandidates(body.key):body.action==='clear'?models.clearThumbnail(body.key):body.file?await models.thumbnailFromFile(body.key,body.file,body):await models.thumbnail(body.key,body.dataUrl,body);
+          send(200,result);return;
+        }
         if(req.method==='POST'&&verb==='model-selection'){const body=await jsonBody(req),target=body.session||gallerySessions.get(id);send(200,await service.studios.models.select(target,body));return;}
         if(req.method==='POST'&&verb==='model-service'){const body=await jsonBody(req);send(200,await service.studios.control(body.provider,'start',AbortSignal.timeout(120000)));return;}
         if(req.method==='GET'&&verb==='collections'){const items=await gallery.catalog();send(200,{items:sessionId?items.filter(c=>c.id==='p-'+sessionId||c.id==='s-'+sessionId||c.sessionKey===sessionId):items});return;}
+        if(req.method==='POST'&&verb==='export-clean'){
+          const body=await jsonBody(req),source=await gallery.file(body.id);
+          if(!source.path)throw Error('画像または動画を選んでください');
+          const output=await postingCopy(service.studios,source.path,AbortSignal.timeout(120000));
+          res.setHeader('Content-Disposition',`attachment; filename="${output.filename}"`);
+          await streamFile(req,res,{path:output.path,type:output.type});return;
+        }
         if(req.method==='GET'&&verb==='progress'){send(200,{items:sessionId?(service.store.find(sessionId)?[service.progress.snapshot(sessionId)]:[]):service.progress.list(),gpu:await service.studios.gpuStatus()});return;}
         if(req.method==='GET'&&verb==='workspace'){
           const p=sessionId?service.store.find(sessionId):null;
-          send(200,{title:p?.title||(session?'このセッション':'メディアライブラリ'),editorUrl:p?`${origin}/#project=${p.id}&token=${token(p.id)}`:null});return;
+          if(sessionId)generationSessions.set(sessionId,session);
+          send(200,{title:p?.title||(session?'このセッション':'メディアライブラリ'),editorUrl:p?`${origin}/#project=${p.id}&token=${token(p.id)}`:null,generationUrl:sessionId?`${origin}/generate.html#project=${sessionId}&token=${token(sessionId)}`:null});return;
         }
         if(req.method==='POST'&&verb==='progress-open'){
           const {projectId}=await jsonBody(req);service.store.get(projectId);send(200,{url:`${origin}/#project=${projectId}&token=${token(projectId)}`});return;
@@ -114,7 +135,7 @@ export async function startEditor(service, port) {
           const args=await jsonBody(req),a=gallery.get(args.id);
           if(a.projectId){service.store.get(a.projectId);send(200,{url:`${origin}/#project=${a.projectId}&token=${token(a.projectId)}&page=${a.pageId}`});}
           else {
-            const session=gallerySessions.get(id),item=await service.edits.open(session,{path:(await gallery.file(a.id)).path},AbortSignal.timeout(60000));
+            const session=args.session||gallerySessions.get(id),item=await service.edits.open(session,{path:(await gallery.file(a.id)).path},AbortSignal.timeout(60000));
             // Import a copy into the gallery's editing session; originals remain intact.
             const {sessionKey}=await import('./store.js'),project=sessionKey(session);
             send(200,{url:`${origin}/media.html#project=${project}&asset=${item.id}&token=${token(project)}`});
@@ -125,11 +146,12 @@ export async function startEditor(service, port) {
       }
       const expected=token(id);
       if(Buffer.byteLength(credential)!==Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(credential),Buffer.from(expected))) {send(401,{error:'DSH の manga_open_editor から編集画面を開いてください'});return;}
-      if(req.method==='GET'&&action==='gallery'){send(200,{url:galleryUrl(id,generationSessions.get(id)||service.store.find(id)?.sessionId||'gallery')});return;}
+      if(req.method==='GET'&&action==='gallery'){send(200,{url:galleryUrl(id,generationSessions.get(id)||service.store.find(id)?.sessionId||'gallery',origin)});return;}
       if(action.startsWith('generate/')) {
         const session=generationSessions.get(id);
         if(!session){send(403,{error:'エージェントの media_open_generator から開き直してください'});return;}
         const verb=action.slice(9),signal=AbortSignal.timeout(120000);
+        if(req.method==='GET'&&verb.startsWith('output/')){const value=await service.studios.job(session,verb.slice(7),'status',signal);if(!value.outputPath)throw Error('生成結果はまだありません');await streamFile(req,res,{path:value.outputPath,type:value.provider==='krea'?'image/png':'video/mp4'});return;}
         if(req.method==='GET'&&verb==='history') {
           const rows=service.store.db.prepare("SELECT id,body FROM integrations WHERE session=? AND kind='media' ORDER BY rowid DESC LIMIT 50").all(id);
           send(200,rows.map(row=>({id:row.id,...JSON.parse(row.body)})));return;
@@ -141,7 +163,7 @@ export async function startEditor(service, port) {
         else if(verb==='service')send(200,await service.studios.control(args.provider,args.action,signal));
         else if(verb==='plan')send(200,service.studios.planLongVideo(args));
         else if(verb==='submit'){const {provider,...params}=args;send(200,await service.studios.generate(session,provider,params,signal));}
-        else if(verb==='job')send(200,await service.studios.job(session,args.id,args.action,signal));
+        else if(verb==='job'){const value=await service.studios.job(session,args.id,args.action,signal);if(value.outputPath)value.outputUrl=`${origin}/api/${id}/generate/output/${args.id}?token=${expected}`;send(200,value);}
         else if(verb==='upscale')send(200,await service.studios.upscale(session,args,signal));
         else send(404,{error:'生成操作がありません'});
         return;
@@ -201,13 +223,26 @@ export async function startEditor(service, port) {
       else if(action==='export') send(200,await service.export(p.sessionId));
       else send(404,{error:'未対応の操作です'});
     } catch(error) {if(!res.headersSent) send(error.status||400,{error:error.message});else res.destroy(error);}
-  });
+  };
+  const server=createServer((req,res)=>handler(req,res));
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});
   origin=`http://127.0.0.1:${server.address().port}`;
   return {
-    url: id=>`${origin}/#project=${id}&token=${token(id)}`,
-    mediaUrl: (id,asset)=>`${origin}/media.html#project=${id}&asset=${asset}&token=${token(id)}`,
-    generationUrl: (id,session)=>{generationSessions.set(id,session);return `${origin}/generate.html#project=${id}&token=${token(id)}`;},
+    mount:(web,remoteOrigin)=>{
+      const localOrigin=`http://127.0.0.1:${web.port}`,allowed=new Set([localOrigin,`http://localhost:${web.port}`]);
+      if(remoteOrigin){const u=new URL(remoteOrigin);if(u.protocol!=='https:'||u.origin!==remoteOrigin||u.username||u.password)throw Error('外部接続にはHTTPSのoriginを指定してください');allowed.add(u.origin);}
+      mountedOrigin=remoteOrigin||localOrigin;
+      return web.register({kind:'prefix',path:'/mang-ai',handler:(req,res)=>{
+        const accessOrigin=[...allowed].find(value=>new URL(value).host===req.headers.host);
+        if(!accessOrigin){res.writeHead(403);res.end('Forbidden');return;}
+        if(req.url==='/mang-ai'){res.writeHead(308,{Location:'/mang-ai/'});res.end();return;}
+        req.url=req.url.slice('/mang-ai'.length);return handler(req,res,accessOrigin,'/mang-ai');
+      }});
+    },
+    mediaContext:(session,referenceId)=>({reference:sessionMedia.reference(session,referenceId),selection:Object.fromEntries(['krea','h3','longvideo'].map(provider=>[provider,service.studios.models.selected(session,provider)]))}),
+    url: id=>`${mountedOrigin?mountedOrigin+'/mang-ai':origin}/#project=${id}&token=${token(id)}`,
+    mediaUrl: (id,asset)=>`${mountedOrigin?mountedOrigin+'/mang-ai':origin}/media.html#project=${id}&asset=${asset}&token=${token(id)}`,
+    generationUrl: (id,session)=>{generationSessions.set(id,session);return `${mountedOrigin?mountedOrigin+'/mang-ai':origin}/generate.html#project=${id}&token=${token(id)}`;},
     galleryUrl,
     progressUrl:(id,session)=>galleryUrl(id,session).replace('/gallery.html#','/progress.html#'),
     workspaceUrl:(id,session)=>galleryUrl(id,session).replace('/gallery.html#','/workspace.html#'),

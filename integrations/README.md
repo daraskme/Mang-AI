@@ -8,6 +8,7 @@
 | `krea2.patch` | Krea 2 StudioのConvRot INT8読込など |
 | `h3.patch` | H3のモデル登録、潜在Hires、メモリ設定など |
 | `latent-upscaler.patch` | 長尺ノードと潜在アップスケーラの互換修正 |
+| `base-model-lock.json` | 公開配布元の基本モデル・固定コミット・重みSHA-256 |
 | `caption-studio/` | 既存キャプション・LoRA学習ツールのソース |
 
 Krea/H3/Captionへの共通GPUキュー接続も上記差分に含みます。共有モジュールは`manga-studio/python/mangai_gpu.py`、長尺Comfy拡張は`manga-studio/integrations/comfy-gpu-lease/`にあります。[常駐モデルの導入記録](../manga-studio/docs/resident-model-setup.md) の設定スクリプトで接続します。Strataの固定リビジョンも`manifest.json`に含めますが、CUDAエンジンとモデルは別途準備します。
@@ -25,3 +26,5 @@ python3 manga-studio/scripts/restore-integrations.py
 追加モデルの取得・登録は `manga-studio/scripts/download-selected-models.py`。KreaモデルはSHA256照合後に未登録IDだけ `config.local.toml` へ追加します。H3の単発用モデルは既存 `minimaxH3-darask/scripts/convert_singlefile_h3.py` でDiffusers形式へ変換します。長尺環境は元の単体ファイルを使います。
 
 既存環境を変更した後は `python3 manga-studio/scripts/snapshot-integrations.py` でソース差分を更新し、差分を確認してコミットします。実行前に追加したファイルがソースであることを確認してください。
+
+基本モデル・非公開LoRA・AVIFデータセットの復元は[保存・再導入手順](../manga-studio/docs/training-assets.md)を参照してください。

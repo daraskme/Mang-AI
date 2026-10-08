@@ -1,7 +1,7 @@
 /* Unmodified GenEi Antique v6. Copyright and SIL OFL 1.1: /fonts/genei-antique/OFLicense.txt */
 @font-face {
   font-family: 'GenEi Antique v6';
-  src: url('/fonts/genei-antique/GenEiAntiqueNv6-M.ttf') format('truetype');
+  src: url('./fonts/genei-antique/GenEiAntiqueNv6-M.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: block;

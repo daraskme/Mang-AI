@@ -22,9 +22,9 @@ class BridgeTest(unittest.TestCase):
                 "    return 'dit', 'ae', 'encoder'\n", encoding="utf-8"
             )
             (repo / "sampling.py").write_text(
-                "from pathlib import Path\n"
+                "from pathlib import Path\nimport base64\n"
                 "class Image:\n"
-                "    def save(self, path): Path(path).write_bytes(b'PNG fixture')\n"
+                "    def save(self, path): Path(path).write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='))\n"
                 "def sample(dit, ae, encoder, prompts, **kw):\n"
                 "    assert (dit, ae, encoder) == ('dit', 'ae', 'encoder')\n"
                 "    assert kw['steps'] == 8 and kw['guidance'] == 0\n"
@@ -47,7 +47,10 @@ class BridgeTest(unittest.TestCase):
                 check=True,
             )
             self.assertEqual(json.loads(result.stdout)["panel"], "p1-c1")
-            self.assertEqual((repo / "panel.png").read_bytes(), b"PNG fixture")
+            output_bytes = (repo / "panel.png").read_bytes()
+            self.assertTrue(output_bytes.startswith(b'\x89PNG\r\n\x1a\n'))
+            self.assertIn(b'eXIf', output_bytes)
+            self.assertIn(b'A station. No text.', output_bytes)
             self.assertFalse((repo / "panel.partial.png").exists())
 
 

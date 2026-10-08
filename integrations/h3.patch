@@ -809,6 +809,55 @@ index 4f46b32..6aacca6 100644
      loras: list[LoraSpec] = Field(default_factory=list, max_length=16)
  
      @field_validator("model")
+diff --git a/h3studio/store.py b/h3studio/store.py
+index f7c8a24..104d317 100644
+--- a/h3studio/store.py
++++ b/h3studio/store.py
+@@ -6,6 +6,7 @@ import threading
+ from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Any
++from .progress import estimate, seconds
+ 
+ 
+ def utcnow() -> str:
+@@ -32,6 +33,7 @@ class JobStore:
+             columns = {row[1] for row in self._db.execute("PRAGMA table_info(jobs)").fetchall()}
+             if "kind" not in columns:
+                 self._db.execute("ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'generate'")
++            self._db.execute("CREATE TABLE IF NOT EXISTS job_progress_samples (id TEXT PRIMARY KEY, body TEXT NOT NULL)")
+ 
+     def create(
+         self, job_id: str, request: dict[str, Any], resolved: dict[str, Any], kind: str = "generate",
+@@ -50,6 +52,13 @@ class JobStore:
+         fields["updated_at"] = utcnow()
+         query = ", ".join(f"{key}=?" for key in fields)
+         with self._lock, self._db:
++            if 'progress' in fields:
++                previous=self._db.execute('SELECT body FROM job_progress_samples WHERE id=?',(job_id,)).fetchone()
++                points=json.loads(previous[0]) if previous else []
++                value=float(fields['progress'])
++                if not points or value>points[-1][1]:
++                    points.append([seconds(fields['updated_at']),value])
++                    self._db.execute('INSERT OR REPLACE INTO job_progress_samples VALUES (?,?)',(job_id,json.dumps(points[-100:])))
+             self._db.execute(f"UPDATE jobs SET {query} WHERE id=?", (*fields.values(), job_id))
+         return self.get(job_id)
+ 
+@@ -73,10 +82,12 @@ class JobStore:
+                 (now, now),
+             )
+ 
+-    @staticmethod
+-    def _decode(row: sqlite3.Row) -> dict[str, Any]:
++    def _decode(self,row: sqlite3.Row) -> dict[str, Any]:
+         data = dict(row)
+         data["request"] = json.loads(data.pop("request_json"))
+         data["resolved"] = json.loads(data.pop("resolved_json"))
+         data["cancel_requested"] = bool(data["cancel_requested"])
++        with self._lock:
++            timing=self._db.execute('SELECT body FROM job_progress_samples WHERE id=?',(data['id'],)).fetchone()
++        data['timing']=estimate(data,json.loads(timing[0]) if timing else [])
+         return data
 diff --git a/scripts/download_model.py b/scripts/download_model.py
 index 00a0743..19c4dab 100644
 --- a/scripts/download_model.py
@@ -827,7 +876,7 @@ index 00a0743..19c4dab 100644
      repo_id="MiniMaxAI/MiniMax-H3",
      revision="42ed227ee7df40d41602854ae760620d6eb651fe",
 diff --git a/static/app.js b/static/app.js
-index 92cf014..3bc724b 100644
+index 92cf014..45419e5 100644
 --- a/static/app.js
 +++ b/static/app.js
 @@ -127,7 +127,7 @@ function selectHistoryPreview(job) {
@@ -1037,6 +1086,15 @@ index 92cf014..3bc724b 100644
    if (acceleration.length > 1) return '高速化LoRAは1件だけ有効にしてください。';
    if (acceleration.length === 1 && !Object.values(TURBO_LORAS).some((name) => acceleration[0].path.toLowerCase().endsWith(name))) return 'この高速化LoRAは独立エンジンで未検証です。';
    if (PRESETS[state.preset].turbo && !hasTurboLora(state.preset)) return 'このTurboプリセットに対応する公式LoRAを有効にしてください。';
+@@ -916,7 +965,7 @@ async function createJob() {
+ }
+ 
+ function jobSignature(job) {
+-  return JSON.stringify([job.kind, job.status, job.progress, job.phase, job.output_path, job.metadata_path, job.thumbnail_url, job.error, job.updated_at, job.request, job.resolved, job.id === state.activePreviewJobId]);
++  return JSON.stringify([job.kind, job.status, job.progress, job.phase, job.timing, job.output_path, job.metadata_path, job.thumbnail_url, job.error, job.updated_at, job.request, job.resolved, job.id === state.activePreviewJobId]);
+ }
+ function mediaPlaceholder(job) {
+   const wrap = el('div', 'media-placeholder');
 @@ -975,7 +1024,7 @@ function buildJobCard(job) {
    const media = el('div', 'job-media');
    const badge = el('span', `job-state-badge ${job.status || ''}`, STATUS_LABELS[job.status] || job.status || '不明'); media.append(badge);
@@ -1057,7 +1115,7 @@ index 92cf014..3bc724b 100644
    content.append(el('p', 'job-prompt', operationTitle));
    const resolved = job.resolved || job.request || {};
    const details = el('div', 'job-details');
-@@ -1003,6 +1054,11 @@ function buildJobCard(job) {
+@@ -1003,19 +1054,28 @@ function buildJobCard(job) {
      details.append(el('span', '', `入力: ${provenance}`), el('span', '', outputSpec));
    }
    content.append(details);
@@ -1068,8 +1126,15 @@ index 92cf014..3bc724b 100644
 +  }
    if (ACTIVE_STATES.has(job.status)) {
      const track = el('div', 'progress-track'); const bar = el('span'); bar.style.width = `${Math.max(0, Math.min(100, Number(job.progress || 0) * 100))}%`; track.append(bar); content.append(track);
-     content.append(el('p', 'phase-line', job.phase || STATUS_LABELS[job.status]));
-@@ -1012,10 +1068,10 @@ function buildJobCard(job) {
+-    content.append(el('p', 'phase-line', job.phase || STATUS_LABELS[job.status]));
++    const timing=job.timing||{},seconds=timing.eta_seconds;
++    const time=value=>value<60?`${Math.round(value)}秒`:`${Math.floor(value/60)}分${Math.round(value%60)}秒`;
++    const remaining=seconds==null?(job.status==='queued'?'順番待ち・残り時間は未定':'残り時間を計算中'):`残り約${time(seconds)}（全体の概算）`;
++    content.append(el('p', 'phase-line', `全体 ${timing.overall_percent??Math.min(99,Math.round((job.progress||0)*100))}% · ${remaining}`));
++    content.append(el('p', 'phase-line', `${job.phase || STATUS_LABELS[job.status]} · ${time(timing.elapsed_seconds||0)}経過`));
+   }
+   if (job.error) content.append(el('pre', 'job-error', job.error));
+   const actions = el('div', 'job-actions');
    if (ACTIVE_STATES.has(job.status)) actions.append(button('中止', 'danger-action', (event) => jobAction('cancel', job, event.currentTarget)));
    if (job.output_path && (job.status === 'completed' || job.status === 'failed') && !isActivePreview) actions.append(button('プレビュー', 'preview-action', () => selectHistoryPreview(job)));
    if (job.output_path) {
@@ -1082,7 +1147,22 @@ index 92cf014..3bc724b 100644
    }
    if (job.status === 'completed' && job.output_path) {
      actions.append(button('拡大する', '', () => setPostSourceFromJob('upscale', job)));
-@@ -1090,11 +1146,16 @@ async function loadHistory(force = false) {
+@@ -1044,6 +1104,14 @@ function refreshSourceJobOptions() {
+ }
+ function renderHistory(jobs) {
+   state.jobs = jobs;
++  const current=jobs.find(job=>job.kind==='generate'&&ACTIVE_STATES.has(job.status))||jobs.find(job=>job.kind==='generate');
++  const summary=$('#generationProgressSummary');summary.hidden=!current;
++  if(current){
++    const timing=current.timing||{},percent=timing.overall_percent??Math.min(99,Math.round((current.progress||0)*100));
++    const eta=timing.eta_seconds,remaining=current.status==='completed'?'完了':!ACTIVE_STATES.has(current.status)?STATUS_LABELS[current.status]:eta==null?'残り時間を計算中':`残り約${Math.floor(eta/60)}分${Math.round(eta%60)}秒`;
++    $('#generationProgressDetail').textContent=`${current.phase||STATUS_LABELS[current.status]} · ${remaining}`;
++    $('#generationProgressBar').style.width=`${percent}%`;$('#generationProgressTrack').setAttribute('aria-valuenow',percent);$('#generationProgressPercent').textContent=`全体 ${percent}% · ${Math.floor((timing.elapsed_seconds||0)/60)}分${(timing.elapsed_seconds||0)%60}秒経過`;
++  }
+   refreshSourceJobOptions();
+   const gallery = $('#history'); gallery.setAttribute('aria-busy', 'false');
+   if (!jobs.length) {
+@@ -1090,11 +1158,16 @@ async function loadHistory(force = false) {
  
  async function openOutputs() {
    const trigger = $('#openOutputs'); setButtonBusy(trigger, true, '開いています…');
@@ -1100,7 +1180,7 @@ index 92cf014..3bc724b 100644
  function bindEvents() {
    bindExclusivePlayback($('#upscalePreview'));
    bindExclusivePlayback($('#interpolatePreview'));
-@@ -1108,7 +1169,7 @@ function bindEvents() {
+@@ -1108,7 +1181,7 @@ function bindEvents() {
      $('#promptCount').textContent = `${$('#prompt').value.length.toLocaleString('ja-JP')} / 20,000`;
      $('#formError').textContent = ''; updateGenerateAvailability();
    });
@@ -1109,7 +1189,7 @@ index 92cf014..3bc724b 100644
    $('#loadModel').addEventListener('click', loadSelectedModel);
    $('#attention').addEventListener('change', renderEngineControl);
    $('#memoryProfile').addEventListener('change', renderEngineControl);
-@@ -1121,6 +1182,16 @@ function bindEvents() {
+@@ -1121,6 +1194,16 @@ function bindEvents() {
    $('#addLora').addEventListener('click', () => addLora());
    $('#generate').addEventListener('click', createJob);
    $('#openOutputs').addEventListener('click', openOutputs);
@@ -1127,7 +1207,7 @@ index 92cf014..3bc724b 100644
    $('#lastFile').addEventListener('change', (event) => { if (event.target.files[0]) uploadFrame('last_frame', event.target.files[0]); });
    $('#firstSlot .frame-remove').addEventListener('click', () => clearUpload('first_frame'));
 diff --git a/static/index.html b/static/index.html
-index eaadd40..aa27544 100644
+index eaadd40..3b09b70 100644
 --- a/static/index.html
 +++ b/static/index.html
 @@ -28,6 +28,7 @@
@@ -1138,7 +1218,19 @@ index eaadd40..aa27544 100644
    </nav>
  
    <main class="workspace" id="studio">
-@@ -87,7 +88,7 @@
+@@ -78,6 +79,11 @@
+         <p class="compat-note" id="presetNote" aria-live="polite"></p>
+       </fieldset>
+ 
++      <section id="generationProgressSummary" class="generation-progress-summary" aria-label="現在の生成進捗" hidden>
++        <p id="generationProgressDetail" role="status"></p>
++        <div class="progress-track" id="generationProgressTrack" role="progressbar" aria-label="全体進捗" aria-valuemin="0" aria-valuemax="100"><span id="generationProgressBar"></span></div>
++        <p id="generationProgressPercent"></p>
++      </section>
+       <details class="advanced">
+         <summary><span>生成設定</span><span class="summary-value" id="resolved">960 × 544 · 124f · 5.17秒 · 24 FPS（推奨）</span></summary>
+         <div class="settings-grid">
+@@ -87,7 +93,7 @@
            <label class="field" for="steps"><span class="field-label">Steps</span><input id="steps" type="number" value="20" min="1" max="80" inputmode="numeric"></label>
            <label class="field seed-field" for="seed"><span class="field-label">Seed</span><input id="seed" type="number" value="1" min="0" max="9007199254740991" inputmode="numeric"></label>
            <label class="field" for="attention"><span class="field-label">Attention</span><select id="attention"><option value="sage">SageAttention</option><option value="sdpa">PyTorch SDPA</option></select></label>
@@ -1147,7 +1239,7 @@ index eaadd40..aa27544 100644
          </div>
          <div class="recommendation-block">
            <div><span class="field-label">おすすめサイズ</span><div class="choice-chips" id="sizePresets" aria-label="おすすめ解像度"></div></div>
-@@ -134,6 +135,11 @@
+@@ -134,6 +140,11 @@
          <label class="field" for="upscaleMethod"><span class="field-label">方式</span><select id="upscaleMethod"><option value="">検出中…</option></select></label>
          <label class="field" for="upscaleScale"><span class="field-label">倍率</span><select id="upscaleScale"><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select></label>
        </div>
@@ -1159,7 +1251,7 @@ index eaadd40..aa27544 100644
        <div class="result-spec"><span>出力</span><b id="upscaleResultSpec">入力映像を選択してください</b></div>
        <p class="capability-note" id="upscaleCapability" role="status">利用できる方式を確認しています…</p>
        <div class="submit-row">
-@@ -180,8 +186,12 @@
+@@ -180,8 +191,12 @@
          <div class="model-health" id="modelHealth" role="status"><span class="mini-spinner" aria-hidden="true"></span><span>モデルを確認しています</span></div>
          <button id="loadModel" class="button model-load" type="button" disabled><span aria-hidden="true">↓</span><span><b>モデルを読み込む</b><small id="loadModelHint">選択したモデルをGPU実行環境へ準備</small></span></button>
          <div class="directory-row">
@@ -1173,7 +1265,7 @@ index eaadd40..aa27544 100644
        </section>
  
        <section class="panel lora-panel" aria-labelledby="loraTitle">
-@@ -192,6 +202,7 @@
+@@ -192,6 +207,7 @@
          <p class="panel-help">上から順に適用します。最大16件まで。</p>
          <div id="loraList" class="lora-list" aria-live="polite"></div>
          <div id="loraEmpty" class="inline-empty">LoRAは選択されていません</div>
@@ -1181,7 +1273,7 @@ index eaadd40..aa27544 100644
        </section>
  
        <details class="panel runtime-panel">
-@@ -207,9 +218,11 @@
+@@ -207,9 +223,11 @@
          <div><p class="kicker">OUTPUTS</p><h2 id="outputsTitle">処理履歴</h2></div>
          <div class="output-tools">
            <span class="queue-summary" id="queueSummary" aria-live="polite">履歴を読み込み中</span>
@@ -1195,7 +1287,7 @@ index eaadd40..aa27544 100644
          <div class="empty-state"><span class="empty-symbol" aria-hidden="true">◇</span><b>処理履歴を読み込んでいます</b><span>少し待ってから表示されます</span></div>
        </div>
 diff --git a/static/styles.css b/static/styles.css
-index ec815ae..53a29f1 100644
+index ec815ae..f326384 100644
 --- a/static/styles.css
 +++ b/static/styles.css
 @@ -89,7 +89,7 @@ a { color: inherit; }
@@ -1243,6 +1335,12 @@ index ec815ae..53a29f1 100644
  .progress-track { height: 3px; margin: 10px 0 2px; overflow: hidden; border-radius: 4px; background: #242a33; }
  .progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #9b6b35, var(--accent)); transition: width .35s ease; }
  .phase-line { min-height: 14px; margin: 4px 0 0; color: var(--muted); font-size: 8px; }
+@@ -484,3 +490,5 @@ fieldset > legend span { color: var(--muted-2); font-weight: 500; }
+ @media (prefers-reduced-motion: reduce) {
+   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+ }
++
++.generation-progress-summary{padding:14px;margin:16px 0;border:1px solid #3b6057;border-radius:12px;background:#122520}.generation-progress-summary p{margin:4px 0 10px}.generation-progress-summary .progress-track{height:9px}
 diff --git a/benchmarks/noxos-balanced-sdpa-auto.json b/benchmarks/noxos-balanced-sdpa-auto.json
 new file mode 100644
 index 0000000..6dd176e
@@ -2070,6 +2168,41 @@ index 0000000..b937d17
 +    if not target.is_relative_to(root) or not target.is_file():
 +        raise FileNotFoundError("出力ファイルが見つかりません")
 +    return target
+diff --git a/h3studio/progress.py b/h3studio/progress.py
+new file mode 100644
+index 0000000..d7bd1aa
+--- /dev/null
++++ b/h3studio/progress.py
+@@ -0,0 +1,29 @@
++"""Approximate total ETA from measured progress; never invent a countdown."""
++from datetime import datetime, timezone
++import math
++
++def seconds(value):
++    if not value:return None
++    try:return datetime.fromisoformat(value.replace('Z','+00:00')).timestamp()
++    except (ValueError,TypeError):return None
++
++def estimate(job, samples, now=None):
++    now=datetime.now(timezone.utc).timestamp() if now is None else now
++    start=seconds(job.get('started_at'));end=seconds(job.get('finished_at'))
++    elapsed=max(0,(end if end is not None else now)-start) if start is not None else 0
++    progress=max(0,min(1,float(job.get('progress') or 0)))
++    state=job.get('status');eta=None;method='warming_up'
++    if state=='completed':progress=1;eta=0;method='complete'
++    elif state=='queued':method='queued'
++    elif state not in {'running','loading','generating'}:method='stopped'
++    else:
++        # Startup weights are not a measured sampling rate. Require several
++        # actual sampling updates before extrapolating the remaining work.
++        points=[p for p in samples if 0.20<=p[1]<=0.85][-10:]
++        if len(points)>=3 and now-points[-1][0]<=90:
++            dt=points[-1][0]-points[0][0];dp=points[-1][1]-points[0][1]
++            if dt>=2 and dp>0:
++                eta=max(1,math.ceil((1-progress)*dt/dp));method='measured_progress_estimate'
++    return {'overall_percent':100 if state=='completed' else min(99,round(progress*100)),
++            'elapsed_seconds':round(elapsed),'eta_seconds':eta,'eta_method':method,
++            'eta_note':'工程配分と実測速度に基づく概算。読込・保存・GPU待ちで変動します。'}
 diff --git a/h3studio/pruned_config.json b/h3studio/pruned_config.json
 new file mode 100644
 index 0000000..c70c684
@@ -2449,6 +2582,39 @@ index 0000000..4f190ef
 +
 +if __name__ == "__main__":
 +    main()
+diff --git a/tests/test_progress_estimate.py b/tests/test_progress_estimate.py
+new file mode 100644
+index 0000000..44df423
+--- /dev/null
++++ b/tests/test_progress_estimate.py
+@@ -0,0 +1,27 @@
++from h3studio.progress import estimate
++from h3studio.store import JobStore
++
++def test_eta_needs_measured_progress_and_handles_stalls_and_terminal_states():
++    job={'status':'running','progress':0.4,'started_at':'1970-01-01T00:01:40+00:00'}
++    assert estimate(job,[],120)['eta_seconds'] is None
++    points=[[105,.2],[110,.3],[115,.4]]
++    value=estimate(job,points,120)
++    assert value['eta_seconds']==30
++    assert value['overall_percent']==40
++    assert value['elapsed_seconds']==20
++    assert estimate(job,points,300)['eta_seconds'] is None
++    job.update(status='completed',finished_at='1970-01-01T00:02:00+00:00')
++    assert estimate(job,points,300)['overall_percent']==100
++    assert estimate(job,points,300)['elapsed_seconds']==20
++    job['status']='failed'
++    assert estimate(job,points,300)['eta_seconds'] is None
++
++def test_progress_samples_persist_without_changing_existing_job_fields(tmp_path):
++    path=tmp_path/'jobs.sqlite';store=JobStore(path)
++    store.create('case',{'prompt':'test'},{'width':704})
++    store.update('case',status='running',progress=.2,started_at='2026-10-09T00:00:00+00:00')
++    store.update('case',progress=.3)
++    again=JobStore(path);job=again.get('case')
++    assert job['resolved']['width']==704
++    assert job['timing']['overall_percent']==30
++    assert again._db.execute('SELECT count(*) FROM job_progress_samples').fetchone()[0]==1
 diff --git a/workflows/10eros-max-beta5-turbo-8step.json b/workflows/10eros-max-beta5-turbo-8step.json
 new file mode 100644
 index 0000000..ef1c820
