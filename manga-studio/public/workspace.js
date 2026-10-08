@@ -1,16 +1,16 @@
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
 window.addEventListener('hashchange',()=>location.reload());
-const base=`/api/${params.get('project')}/gallery/`,session=params.get('session')||'';
-const frames={gallery:$('gallery-frame'),models:$('models-frame'),progress:$('progress-frame'),editor:$('editor-frame')};
+const base=`./api/${params.get('project')}/gallery/`,session=params.get('session')||'';
+const frames={gallery:$('gallery-frame'),generate:$('generate-frame'),models:$('models-frame'),progress:$('progress-frame'),editor:$('editor-frame')};
 let current=params.get('view')==='progress'?'progress':'gallery';
 const embedded=value=>{const url=new URL(value,location.href),p=new URLSearchParams(url.hash.slice(1));p.set('embedded','1');url.hash=p.toString();return url.href;};
-function screen(name){const p=new URLSearchParams(params);p.delete('view');return `/${name}.html#${p}`;}
+function screen(name){const p=new URLSearchParams(params);p.delete('view');return `./${name}.html#${p}`;}
 function show(view){
   current=view;for(const [key,frame]of Object.entries(frames))frame.hidden=key!==view;
   for(const button of document.querySelectorAll('[data-view]'))button.setAttribute('aria-pressed',String(button.dataset.view===view));
   $('editor-empty').hidden=view!=='editor'||!!frames.editor.getAttribute('src');
   // Keep visited frames mounted so unsaved text, masks and gallery filters survive.
-  if(view!=='editor'&&!frames[view].getAttribute('src'))frames[view].src=embedded(screen(view));
+  if(!['editor','generate'].includes(view)&&!frames[view].getAttribute('src'))frames[view].src=embedded(screen(view));
 }
 async function context(){
   const r=await fetch(base+'workspace?'+new URLSearchParams({session}),{headers:{Authorization:`Bearer ${params.get('token')}`},signal:AbortSignal.timeout(10000)});
@@ -27,15 +27,15 @@ async function openEditor(value){
   $('workspace-status').textContent='';show('editor');
 }
 for(const button of document.querySelectorAll('[data-view]'))button.onclick=async()=>{
-  try{const view=button.dataset.view;if(view==='editor'&&!frames.editor.getAttribute('src')){const c=await context();if(c.editorUrl)return await openEditor(c.editorUrl);}show(view);}catch(e){$('workspace-status').textContent=e.message;}
+  try{const view=button.dataset.view;if(view==='editor'&&!frames.editor.getAttribute('src')){const c=await context();if(c.editorUrl)return await openEditor(c.editorUrl);}if(view==='generate'&&!frames.generate.getAttribute('src')){const c=await context();if(!c.generationUrl){$('workspace-status').textContent='生成するセッションを先に開いてください';return;}frames.generate.src=embedded(c.generationUrl);}show(view);}catch(e){$('workspace-status').textContent=e.message;}
 };
 window.addEventListener('message',event=>{
   if(event.origin!==location.origin||!Object.values(frames).some(f=>event.source===f.contentWindow)||event.data?.type!=='mang-ai:navigate')return;
   try{
     const url=new URL(event.data.url);if(url.origin!==location.origin)return;
-    if(url.pathname==='/gallery.html')show('gallery');
-    else if(url.pathname==='/progress.html')show('progress');
-    else if(['/', '/media.html'].includes(url.pathname))openEditor(url.href).catch(e=>$('workspace-status').textContent=e.message);
+    if(url.pathname.endsWith('/gallery.html'))show('gallery');
+    else if(url.pathname.endsWith('/progress.html'))show('progress');
+    else if((url.pathname===new URL('./',location.href).pathname||url.pathname.endsWith('/media.html')))openEditor(url.href).catch(e=>$('workspace-status').textContent=e.message);
   }catch{/* Ignore unrelated frames and malformed messages. */}
 });
 // The outer dock may request the progress tab without reloading this workspace.

@@ -14,8 +14,8 @@ export class MediaGallery {
     const library=JSON.parse(await readFile(s.config.library,'utf8').catch(e=>{if(e.code==='ENOENT')return '{"items":[]}';throw e;}));
     for(const d of library.items.filter(x=>x.kind==='dataset')){
       const root=await realpath(d.path).catch(()=>null);if(!root)continue;
-      const allowed=await realpath(join(workspace,'datasets'));
-      if(!inside(allowed,root))continue;
+      const allowed=(await Promise.all(['datasets','datasets-optimized'].map(name=>realpath(join(workspace,name)).catch(()=>null)))).filter(Boolean);
+      if(!allowed.some(base=>inside(base,root)))continue;
       const item={id:'d-'+digest(root),group:'datasets',title:d.name,subtitle:`${d.family} · ${d.category}`,count:d.images+d.videos,missing:d.missingLinks||0,root};
       this.collections.set(item.id,item);items.push(item);
     }

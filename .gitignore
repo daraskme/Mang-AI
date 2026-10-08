@@ -58,3 +58,8 @@ work/
 # Local model configuration backups and temporary replacements
 *.before-glm-*
 *.glm-*
+
+# Optimized private training assets; originals remain separate.
+/datasets-optimized/
+/datasets-archive/
+/datasets-supplemental/

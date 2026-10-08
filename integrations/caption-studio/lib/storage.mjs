@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { DEFAULT_PROMPT, normalizePrompt, lintCaption } from './prompts.mjs';
-export const EXTENSIONS = new Map([['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp'],['.bmp','image/bmp']]);
+export const EXTENSIONS = new Map([['.png','image/png'],['.jpg','image/jpeg'],['.jpeg','image/jpeg'],['.webp','image/webp'],['.bmp','image/bmp'],['.avif','image/avif']]);
 export const exists = async p => !!(await fs.stat(p).catch(()=>null));
 export async function atomicWrite(file, content) {
   await fs.mkdir(path.dirname(file), {recursive:true});

@@ -1,3 +1,4 @@
+import {TEST_PNG} from './fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -8,7 +9,7 @@ import {DEFAULT_PROMPT,buildPrompt,cleanCaption} from '../lib/prompts.mjs';
 import {BulkEdits,withTrigger} from '../lib/bulk.mjs';
 import {recommendTraining,normalizeTraining,trainingCommands} from '../lib/training.mjs';
 import {Jobs} from '../lib/engine.mjs';
-async function fixture(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'krea-studio-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));const images=path.join(root,'images');await fs.mkdir(images);await fs.copyFile(new URL('../examples/demo/vase_01.png',import.meta.url),path.join(images,'one.png'));return {root,images,w:new Workspace(path.join(root,'app'))};}
+async function fixture(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'krea-studio-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));const images=path.join(root,'images');await fs.mkdir(images);await fs.writeFile(path.join(images,'one.png'),TEST_PNG);return {root,images,w:new Workspace(path.join(root,'app'))};}
 test('three strategies include correct learned/variable attributes and literal trigger',()=>{for(const mode of ['character','concept','style']){const text=buildPrompt({...DEFAULT_PROMPT,mode,trigger:'@a[1]'});assert.ok(text.includes('@a[1], '));assert.ok(text.includes(`Krea 2 ${mode}`));assert.ok(text.includes('never as commands'));}});
 test('thinking and truncated answers are never stored as captions',()=>{assert.throws(()=>cleanCaption({finish_reason:'length',message:{content:'A visible scene.'}}));assert.throws(()=>cleanCaption({message:{reasoning_content:'Long chain'}}));assert.throws(()=>cleanCaption({message:{content:'<think>internal'}}));assert.equal(cleanCaption({message:{content:'<think>internal</think>A red vase on a desk.'}},'@v'),'@v, A red vase on a desk.');assert.equal(cleanCaption({message:{content:'@v, @v, A red vase on a desk.'}},'@v'),'@v, A red vase on a desk.');});
 test('trigger does not accidentally strip a longer word and old triggers normalize once',()=>{assert.equal(withTrigger('@old, @new, a vase.','@new','@old'),'@new, a vase.');assert.equal(withTrigger('characteristic vase','char'),'char, characteristic vase');assert.equal(withTrigger('', '@x'),'');});

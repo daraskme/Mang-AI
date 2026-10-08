@@ -1,10 +1,16 @@
 import {createHash} from 'node:crypto';
-import {mkdir,writeFile,readFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {mkdir,writeFile,readFile,realpath,readdir,stat} from 'node:fs/promises';
+import {join,dirname,resolve,sep,extname} from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {packageRoot} from './config.js';
 import {sessionKey} from './store.js';
 
 const providers=new Set(['krea','h3','longvideo']);
 const keyOf=(provider,kind,id)=>createHash('sha256').update(JSON.stringify([provider,kind,id])).digest('hex').slice(0,32);
+const execute=promisify(execFile);
+const referenceKinds=new Set(['reference','training','generated']);
+const inside=(base,path)=>path===base||path.startsWith(base+sep);
 
 /** Catalog metadata lives beside the artwork, never inside model weight folders. */
 export class ModelLibrary {
@@ -41,15 +47,57 @@ export class ModelLibrary {
     const items=this.db.prepare('SELECT body FROM model_catalog WHERE provider=?').all(provider).map(row=>{const item=JSON.parse(row.body);const thumbnail=this.db.prepare('SELECT body FROM model_thumbnails WHERE key=?').get(item.key);return {...item,thumbnail:thumbnail?JSON.parse(thumbnail.body):null};});
     return {provider,items,cached:!!error,error,...error?{note:'生成環境へ未接続です。保存済みの一覧を表示しています。環境を起動して一覧を更新してください。'}:{}};
   }
-  async thumbnail(key,dataUrl){
+  async thumbnail(key,dataUrl,{kind='reference'}={}){
     if(!this.db.prepare('SELECT key FROM model_catalog WHERE key=?').get(key))throw Error('モデルを一覧から選び直してください');
-    const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl||'');
-    if(!match||match[2].length>8*1024*1024)throw Error('サムネイルは6MB以下のPNG/JPEG/WebPです');
+    if(!referenceKinds.has(kind))throw Error('参考画像の種類が不正です');
+    const match=/^data:image\/(png|jpeg|webp|avif);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl||'');
+    if(!match||match[2].length>8*1024*1024)throw Error('サムネイルは6MB以下のPNG/JPEG/WebP/AVIFです');
     const bytes=Buffer.from(match[2],'base64'),type=match[1];
     if(type==='png'&&!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||type==='jpeg'&&!(bytes[0]===255&&bytes[1]===216)||type==='webp'&&!(bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'))throw Error('画像の形式が一致しません');
+    if(type==='avif'&&(bytes.toString('ascii',4,8)!=='ftyp'||!bytes.subarray(8,Math.min(bytes.length,64)).includes(Buffer.from('avif'))))throw Error('画像の形式が一致しません');
     const revision=createHash('sha256').update(bytes).digest('hex').slice(0,12),file=`${key}-${revision}.${type}`;
     const dir=join(this.store.root,'.model-thumbnails');await mkdir(dir,{recursive:true});await writeFile(join(dir,file),bytes);
-    const record={file,type:'image/'+type,revision};this.db.prepare('INSERT OR REPLACE INTO model_thumbnails VALUES (?,?)').run(key,JSON.stringify(record));return record;
+    const record={file,type:'image/'+type,revision,kind,updatedAt:new Date().toISOString()};this.db.prepare('INSERT OR REPLACE INTO model_thumbnails VALUES (?,?)').run(key,JSON.stringify(record));return record;
+  }
+  clearThumbnail(key){
+    if(!this.db.prepare('SELECT key FROM model_catalog WHERE key=?').get(key))throw Error('モデルを一覧から選び直してください');
+    this.db.prepare('DELETE FROM model_thumbnails WHERE key=?').run(key);return {thumbnail:null};
+  }
+  async referenceRoots(){
+    const root=resolve(dirname(this.studios.config.library),'..');
+    return (await Promise.all([this.store.root,...['datasets','datasets-optimized','datasets-archive','caption-studio/training-runs','krea2-darask/outputs','minimaxH3-darask/outputs'].map(p=>join(root,p))].map(p=>realpath(p).catch(()=>null)))).filter(Boolean);
+  }
+  async thumbnailFromFile(key,file,{kind='reference'}={}){
+    const path=await realpath(file),roots=await this.referenceRoots();
+    if(!roots.some(root=>inside(root,path)))throw Error('データセットまたは生成物のフォルダから選んでください');
+    if(!['.png','.jpg','.jpeg','.webp','.avif','.bmp','.mp4','.webm','.mov','.mkv'].includes(extname(path).toLowerCase()))throw Error('画像または動画を選んでください');
+    const root=resolve(dirname(this.studios.config.library),'..');
+    const python=this.studios.config.thumbnailPython||join(root,'caption-studio/runtime/python-run');
+    const {stdout}=await execute(python,[join(packageRoot,'scripts/make-model-thumbnail.py'),path],{encoding:'buffer',timeout:30000,maxBuffer:6*1024*1024});
+    return this.thumbnail(key,'data:image/png;base64,'+stdout.toString('base64'),{kind});
+  }
+  async thumbnailCandidates(key){
+    const row=this.db.prepare('SELECT body FROM model_catalog WHERE key=?').get(key);if(!row)throw Error('モデルを一覧から選び直してください');
+    const item=JSON.parse(row.body),library=JSON.parse(await readFile(this.studios.config.library,'utf8'));
+    const lora=library.items.find(l=>l.kind==='lora'&&l.family===(item.provider==='krea'?'krea2':'h3')&&l.loraId===item.id);
+    if(!lora)return {items:[],note:'対応する学習データの登録がありません。画像をアップロードできます。'};
+    const datasets=library.items.filter(d=>d.kind==='dataset'&&d.family===lora.family&&[lora.name,lora.trigger].includes(d.name));
+    const roots=await this.referenceRoots(),items=[];
+    const visit=async(dir,depth=0)=>{
+      if(depth>8||items.length>=48)return;
+      const real=await realpath(dir).catch(()=>null);if(!real||!roots.some(root=>inside(root,real)))return;
+      for(const e of (await readdir(real,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
+        if(e.name.startsWith('.')||items.length>=48)continue;
+        const path=join(real,e.name);
+        if(e.isDirectory())await visit(path,depth+1);
+        else if(['.png','.jpg','.jpeg','.webp','.avif','.bmp','.mp4','.webm','.mov','.mkv'].includes(extname(e.name).toLowerCase())){
+          const file=await realpath(path).catch(()=>null);
+          if(file&&roots.some(root=>inside(root,file))&&(await stat(file)).isFile())items.push({file,name:e.name,kind:'training'});
+        }
+      }
+    };
+    for(const dataset of datasets)await visit(dataset.path);
+    return {items,note:'学習データの参考画像です。このLoRAの生成結果を示すものではありません。動画は先頭フレームを使います。'};
   }
   async thumbnailFile(key){
     if(!/^[a-f0-9]{32}$/.test(key))throw Error('モデルIDが不正です');

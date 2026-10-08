@@ -10,6 +10,12 @@ A1を指揮役に、ローカルモデルで漫画・画像・動画・コード
 | A1とGPUモデルの導入 | [常駐モデルの設定](manga-studio/docs/resident-model-setup.md) |
 | GLMの導入・保持・切替 | [GLMコーディング](manga-studio/docs/glm-coding-session.md) |
 | 262K入力の測定値・制約 | [GLM検証結果](manga-studio/docs/glm-validation-2026-10-09.md) |
+| AVIF・LoRA・学習データの保管と復元 | [保存・再導入手順](manga-studio/docs/training-assets.md) |
+| 画像収集とA1連携 | [X・Pixiv・Gelbooru・Pawchive](manga-studio/docs/dataset-collection.md) |
+| モデル・LoRAの参考画像 | [サムネイルの設定・変更](manga-studio/docs/model-thumbnails.md) |
+| 会話と生成物を一緒に扱う | [セッションとメディア](manga-studio/docs/session-workspace.md) |
+| 生成情報の保存・投稿時の削除・進捗 | [EXIFと投稿用コピー](manga-studio/docs/generation-metadata.md) |
+| 自分の端末から外部接続 | [Cloudflare Tunnel・Google認証](manga-studio/docs/remote-access.md) |
 | 外部環境の取得元・固定版 | [integrations](integrations/README.md) |
 | 小説執筆の規約・Skill | [小説執筆ガイド](docs/novel-writing.md)、[MANUAL](MANUAL.md) |
 | 検証資料の一覧 | [ドキュメント索引](docs/README.md) |
@@ -90,12 +96,14 @@ prefix再利用は0。長文のHTTP全体は457秒、モデルの初期ロード
 - UEFI変更後、負荷中のPCIe Gen5 x16を確認。アイドル時のGen1表示だけでは異常とは判断できません。DMA測定と実際のhost-mapped転送の速度は異なります。
 - Q4_K_Mの重みを使用しており、独自の再量子化、単一GPUのMTP、DMAへのランタイム変更は未実装です。先読みやCPU固定配分は一律改善せず、通常設定に採用していません。
 - A1のhealth維持は確認しましたが、重い指揮タスクのp95遅延は未測定です。長文試験ではGPU温度最大89℃を観測しました。電力・冷却設定は変更していません。
-- APIはlocalhost用です。公開ネットワーク向けの認証・運用構成ではありません。モデルの`tool_choice=required`強制は未対応です。
+- 推論APIはlocalhost用です。GUIの外部接続には別途[Cloudflare Access付きTunnel](manga-studio/docs/remote-access.md)を設定します。モデルの`tool_choice=required`強制は未対応です。
 - H3の新規LoRA学習、吹き出しの自動検出・文字の自動フィット等は未実装です。作画・学習の確認範囲は[機能監査](manga-studio/docs/feature-audit-2026-10-05.md)と[実生成確認](manga-studio/docs/lora-generation-validation-2026-10-08.md)を参照してください。
 
 条件別の全測定、採否、再現方法、残る評価計画は[詳細なGLM検証](manga-studio/docs/glm-validation-2026-10-09.md)にまとめています。
 
 ## 開発・検査
+
+Python検査にはPillow（AVIF対応）、動画メタデータの検査にはffmpeg/ffprobeが必要です。導入済み環境では `caption-studio/runtime/python-run` を使えます。
 
 ```bash
 # manga-studio/で実行。いずれも実モデルの起動は不要
@@ -106,7 +114,14 @@ python3 -m unittest discover -s manga-studio/tests -p 'test_*.py'
 python3 scripts/audit-repo.py
 ```
 
-2026-10-09の公開前検査ではNode 41件、Python 19件、実DSH＋模擬APIの統合試験が成功。GLM側のPython検査は15件です。これらは実モデル品質の検証を代替しません。小説の表記ルールを変更する場合は追加で`bash scripts/eval.sh`を実行します。
+2026-10-09の追加検査ではNode 45件、Python 27件、Caption Studio 15件、H3進捗・ジョブ管理10件と、実DSH＋模擬APIの統合試験が成功。独立したDSHの実ブラウザで会話の参照素材・下書き保持・生成画面・モバイル幅を確認しました。GLM側のPython検査は15件です。これらは実モデル品質の検証を代替しません。小説の表記ルールを変更する場合は追加で`bash scripts/eval.sh`を実行します。
+
+## 画像・LoRA・データの実施結果
+
+- 32個の登録済みLoRAを含む学習資産と、画像・キャプション・動画を別々の非公開Hugging Faceリポジトリへ保管し、SHA-256を照合しました。基本モデルは公式の固定版から復元します。
+- 静止画8,048枚をAVIFへ変換。長辺2048を超える2,492枚だけ縮小し、画像群は17.3953 GiBから3.9617 GiBへ77.23%削減しました。原本と動画は再圧縮せず保持しています。再学習ではキャッシュを再作成します。
+- Krea2 24個・H3 8個すべてで新しく生成し、実出力からサムネイルを設定しました。Krea2は海と水着の成人女性、各LoRAのトリガーを使用。H3は新規生成動画の先頭フレームです。
+- X・Pixiv・Gelbooru・Pawchiveの収集とAVIF準備をA1のツールから実行できます。認証が必要な実サイトでの収集は未検証です。H3の新規LoRA学習は引き続き未統合です。
 
 ## リポジトリの役割
 

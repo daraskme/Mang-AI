@@ -5,6 +5,7 @@ import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createHash,randomUUID} from 'node:crypto';
 import {atomicWrite,exists} from './storage.mjs';
+import {trainingTiming,readTrainingProgress} from './training-progress.mjs';
 const execute=promisify(execFile);
 const APP_ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export const TRAIN_MODELS={dit:path.join(APP_ROOT,'models/krea2/krea2_raw_bf16.safetensors'),vae:path.join(APP_ROOT,'models/krea2/qwen_image_vae.safetensors'),textEncoder:path.join(APP_ROOT,'models/krea2/qwen3_vl_4b.safetensors')};
@@ -49,7 +50,7 @@ export class Training {
       try{const result=JSON.parse(await fs.readFile(path.join(this.root,'training-runs',name,'result.json'),'utf8'));this.current=result;this.logs=(await fs.readFile(path.join(result.run,'train.log'),'utf8').catch(()=> '')).split(/[\r\n]+/).filter(Boolean).slice(-100);break;}catch{}
     }
   }
-  status(){return this.current?{...this.current,logs:this.logs.slice(-100)}:null;}
+  status(){if(!this.current)return null;const {progressSamples,...current}=this.current;return {...current,timing:trainingTiming(this.current),logs:this.logs.slice(-100)};}
   async fingerprint(items){const records=[];for(const i of items){const f=await this.workspace.imagePath(i.id),s=await fs.stat(f);records.push([i.id,i.caption,s.size,s.mtimeMs]);}return createHash('sha256').update(JSON.stringify([this.workspace.project.id,this.workspace.project.settings,records])).digest('hex');}
   async prepare(input,ids){
     if(this.active())throw new Error('学習中です');if(this.jobs.active())throw new Error('キャプション生成を先に停止してください');
@@ -88,14 +89,14 @@ export class Training {
       await atomicWrite(path.join(p.run,'dataset.toml'),`[general]\nresolution = [${p.config.resolution}, ${p.config.resolution}]\ncaption_extension = ".txt"\nbatch_size = ${p.config.batchSize}\nenable_bucket = true\nbucket_no_upscale = true\n\n[[datasets]]\nimage_directory = ${quote(dataset)}\ncache_directory = ${quote(path.join(p.run,'cache'))}\nnum_repeats = 1\n`);
       await atomicWrite(path.join(p.run,'trigger.txt'),p.trigger+'\n');
       this.plan=null;this.logs=[];this.current={id,state:'running',phase:'準備',step:0,totalSteps:p.config.steps,run:p.run,trigger:p.trigger,startedAt:Date.now(),artifacts:[]};
-      void this.run(p).catch(async e=>{this.current.state=this.current.state==='stopping'?'cancelled':'error';this.current.error=e.message;this.log(e.message);await atomicWrite(path.join(p.run,'result.json'),JSON.stringify(this.current,null,2));});return this.status();
+      void this.run(p).catch(async e=>{this.current.state=this.current.state==='stopping'?'cancelled':'error';this.current.finishedAt=Date.now();this.current.error=e.message;this.log(e.message);await atomicWrite(path.join(p.run,'result.json'),JSON.stringify(this.current,null,2));});return this.status();
     }finally{this.launching=false;}
   }
-  log(text){this.logs.push(...text.replace(/\x1b\[[0-9;]*m/g,'').split(/[\r\n]+/).filter(Boolean));if(this.logs.length>300)this.logs.splice(0,this.logs.length-300);const all=[...text.matchAll(/(\d+)\/(\d+)\s*\[/g)];if(all.length&&this.current?.phase==='LoRA学習'){const m=all.at(-1);this.current.step=Number(m[1]);}}
+  log(text){this.logs.push(...text.replace(/\x1b\[[0-9;]*m/g,'').split(/[\r\n]+/).filter(Boolean));if(this.logs.length>300)this.logs.splice(0,this.logs.length-300);this.progressText=((this.progressText||'')+text).slice(-4096);readTrainingProgress(this.current,this.progressText);}
   async run(p){
     if(this.engine.child){this.current.phase='GemmaのVRAMを解放';this.engine.stop();for(let i=0;i<100&&this.engine.child;i++)await new Promise(r=>setTimeout(r,100));if(this.engine.child)throw new Error('Gemmaの停止が完了していません');}
     for(const command of p.commands){
-      if(this.current.state==='stopping')throw new Error('学習を停止しました');this.current.phase=command.name;
+      if(this.current.state==='stopping')throw new Error('学習を停止しました');this.current.phase=command.name;this.current.phaseStartedAt=Date.now();this.current.phaseStep=0;this.current.phaseTotal=0;this.current.progressSamples=[];this.progressText='';
       await new Promise((resolve,reject)=>{
         const executable=path.join(this.root,'runtime/python-run'),managed=!!process.env.MANGAI_GPU_STATE;
         if(managed&&(!process.env.MANGAI_GPU_PYTHON||!process.env.MANGAI_GPU_RUNNER))throw Error('共通GPUキューの実行設定がありません');
@@ -104,6 +105,7 @@ export class Training {
         child.stdout.on('data',write);child.stderr.on('data',write);child.on('error',reject);child.on('close',(code,signal)=>{this.child=null;code===0?resolve():reject(new Error(`${command.name}が終了しました (${code??signal})。ログを確認してください。`));});
       });
     }
+    this.current.phase='保存・検証';this.current.phaseStep=0;this.current.phaseTotal=0;
     const output=path.join(p.run,'output'),files=await fs.readdir(output).catch(()=>[]);this.current.artifacts=files.filter(f=>f.endsWith('.safetensors')).map(f=>path.join(output,f));
     if(!this.current.artifacts.length)throw new Error('学習は終了しましたがLoRAファイルが見つかりません');
     await atomicWrite(path.join(output,'trigger.txt'),p.trigger+'\n');

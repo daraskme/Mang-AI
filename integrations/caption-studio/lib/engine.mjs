@@ -2,7 +2,9 @@ import fs from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileAsync=promisify(execFile);
 import { exists, atomicWrite, EXTENSIONS } from './storage.mjs';
 import { buildPrompt, cleanCaption } from './prompts.mjs';
 const APP_ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -64,12 +66,20 @@ export class Engine {
   async caption(file,settings,metadata,signal) {
     const size=(await fs.stat(file)).size;
     if(size>40*1024*1024)throw new Error('画像が40MBを超えています。縮小版を使用してください');
-    const image=await fs.readFile(file);
+    const requestSignal=AbortSignal.any([signal,AbortSignal.timeout(settings.timeout*1000)]);
+    let mime=EXTENSIONS.get(path.extname(file).toLowerCase()),image;
+    if(mime==='image/avif') {
+      // The local vision backend accepts PNG; AVIF is decoded only for transport.
+      const python=process.env.MANGAI_CAPTION_PYTHON||path.join(APP_ROOT,'runtime/python-run');
+      const result=await execFileAsync(python,[path.join(APP_ROOT,'tools/image-for-caption.py'),file],
+        {encoding:'buffer',maxBuffer:40*1024*1024,timeout:30000,signal:requestSignal});
+      image=result.stdout;mime='image/png';
+    } else image=await fs.readFile(file);
     const prompt=buildPrompt(settings,metadata);
     const res=await fetch(this.base()+'/v1/chat/completions',{
       method:'POST',headers:{'Content-Type':'application/json',...this.headers()},
-      signal:AbortSignal.any([signal,AbortSignal.timeout(settings.timeout*1000)]),
-      body:JSON.stringify({messages:[{role:'user',content:[{type:'image_url',image_url:{url:`data:${EXTENSIONS.get(path.extname(file).toLowerCase())};base64,${image.toString('base64')}`}},{type:'text',text:prompt}]}],temperature:settings.temperature,top_p:0.9,max_tokens:settings.maxTokens,stream:false,reasoning_format:'deepseek',chat_template_kwargs:{enable_thinking:false,thinking:false}})
+      signal:requestSignal,
+      body:JSON.stringify({messages:[{role:'user',content:[{type:'image_url',image_url:{url:`data:${mime};base64,${image.toString('base64')}`}},{type:'text',text:prompt}]}],temperature:settings.temperature,top_p:0.9,max_tokens:settings.maxTokens,stream:false,reasoning_format:'deepseek',chat_template_kwargs:{enable_thinking:false,thinking:false}})
     });
     if(!res.ok)throw new Error(`llama-server HTTP ${res.status}: ${(await res.text()).slice(0,500)}`);
     const data=await res.json();return {caption:cleanCaption(data.choices?.[0],settings.trigger),prompt};

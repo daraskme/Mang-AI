@@ -6,7 +6,7 @@
       "url": "https://github.com/daraskme/krea2-darask.git",
       "revision": "af53746e5880c26b3798b077a5f2e14868a13408",
       "patch": "krea2.patch",
-      "sha256": "ffe24ae2e2f20f05e5730f96739abeaa5de3841b66547c9920e77433ec36ac6c"
+      "sha256": "24ab91bcc17face0b9d6c377dac7bd206336b2f195580965acd9ff55bc79d9e4"
     },
     {
       "name": "h3",
@@ -14,7 +14,7 @@
       "url": "https://github.com/daraskme/minimaxH3-darask.git",
       "revision": "151ac0483315b598405bc7f0dd5f3190859f54c5",
       "patch": "h3.patch",
-      "sha256": "78cf3f017c66e22a181d6a047c7bef059a414e397af548ce51e87fcef5dedc5f"
+      "sha256": "5a1ad1ea89076c5b040b6c4378414f695b5a32548146791b38a14aeb1028f7f4"
     },
     {
       "name": "latent-upscaler",

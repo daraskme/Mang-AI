@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import sys
+from media_metadata import embed_png
 
 
 def main():
@@ -23,6 +24,9 @@ def main():
         target = Path(panel["output"])
         temporary = target.with_suffix(".partial.png")
         images[0].save(str(temporary))
+        embed_png(temporary,{'schema':'mangai-generation-v1','model':request['checkpoint'],'prompt':panel['prompt'],
+                             'seed':panel['seed'],'width':panel['width'],'height':panel['height'],
+                             'steps':request['steps'],'guidance':request['cfg'],'mu':request['mu'],'loras':[]})
         temporary.replace(target)
         print(json.dumps({"panel": panel["id"], "saved": str(target)}), flush=True)
 

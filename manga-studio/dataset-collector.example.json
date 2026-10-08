@@ -1,0 +1,6 @@
+{
+  "x": {"cookies_file": ""},
+  "pixiv": {"refresh_token": "", "cookies_file": ""},
+  "gelbooru": {"api_key": "", "user_id": "", "cookies_file": ""},
+  "pawchive": {"cookies_file": ""}
+}

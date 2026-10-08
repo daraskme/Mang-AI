@@ -1,9 +1,18 @@
+import {navigateMedia} from './navigation.js';
 const $=id=>document.getElementById(id),hash=new URLSearchParams(location.hash.slice(1));
 const key=hash.get('project'),token=hash.get('token');let current,serial=0,modelCatalog=[],selectedWeights=new Map();
 const galleryButton=document.createElement('button');galleryButton.textContent='メディアギャラリー';document.querySelector('h1').after(galleryButton);
-galleryButton.onclick=async()=>{try{const r=await fetch(`/api/${key}/gallery`,{headers:{Authorization:`Bearer ${token}`}});const v=await r.json();if(!r.ok)throw Error(v.error);location.href=v.url;}catch(e){$('status').textContent=e.message;}};
-async function api(action,body){const r=await fetch(`/api/${key}/generate/${action}`,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...body===undefined?{}:{'Content-Type':'application/json'}},body:body===undefined?undefined:JSON.stringify(body)});const value=await r.json();if(!r.ok)throw Error(value.error);return value;}
-const show=v=>{$('result').textContent=JSON.stringify(v,null,2)};
+galleryButton.onclick=async()=>{try{const r=await fetch(`./api/${key}/gallery`,{headers:{Authorization:`Bearer ${token}`}});const v=await r.json();if(!r.ok)throw Error(v.error);navigateMedia(v.url);}catch(e){$('status').textContent=e.message;}};
+async function api(action,body){const r=await fetch(`./api/${key}/generate/${action}`,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,...body===undefined?{}:{'Content-Type':'application/json'}},body:body===undefined?undefined:JSON.stringify(body)});const value=await r.json();if(!r.ok)throw Error(value.error);return value;}
+const show=v=>{
+  $('result').textContent=JSON.stringify(v,null,2);
+  const j=v.job;if(!j)return;$('generation-progress').hidden=false;
+  const percent=j.status==='completed'?100:Math.min(99,Math.max(0,Math.round(j.timing?.overall_percent??(Number(j.progress)||0)*100)));
+  const eta=j.timing?.eta_seconds,terminal=['completed','failed','cancelled','canceled'].includes(j.status),label={completed:'生成が完了しました',failed:'生成に失敗しました',cancelled:'生成を中止しました',canceled:'生成を中止しました'}[j.status];
+  $('generation-detail').textContent=label||j.message||j.stage||'順番を待っています';
+  $('generation-eta').textContent=!terminal&&Number.isFinite(eta)?`残り約 ${Math.ceil(eta/60)}分（推定）`:!terminal?'残り時間を計測中':'';
+  if(typeof j.progress==='number'||j.timing?.overall_percent!==undefined||j.status==='completed')$('generation-bar').value=percent;else $('generation-bar').removeAttribute('value');$('generation-percent').textContent=`全体 ${percent}%`;
+};
 const run=fn=>async()=>{try{$('status').textContent='処理中…';await fn();if($('status').textContent==='処理中…')$('status').textContent='更新しました';}catch(e){$('status').textContent=e.message;}};
 function args(){const provider=$('provider').value,a={provider,prompt:$('prompt').value,seed:Number($('seed').value)};if(provider==='longvideo')Object.assign(a,{model:$('model').value,shot_seconds:Number($('shot').value),megapixels:Number($('mp').value),steps:$('quality').value==='draft'?4:8,resolution:$('ratio').value,latent_upscale:$('latent').value});else Object.assign(a,{[provider==='krea'?'model_id':'model']:$('model').value,width:Number($('width').value),height:Number($('height').value),preset:$('quality').value==='draft'?(provider==='krea'?'fast4':'turbo4'):'turbo8',...provider==='h3'?{frames:Number($('frames').value)}:{}});if(provider!=='krea'&&$('first').value.trim())a.firstFramePath=$('first').value.trim();return a;}
 async function refresh(){
@@ -22,7 +31,7 @@ async function refresh(){
 }
 function updatePresets(){const model=modelCatalog.find(m=>m.id===$('model').value),draft=$('quality').querySelector('option[value="draft"]');draft.disabled=$('provider').value==='krea'&&model?.supported_presets&&!model.supported_presets.includes('fast4');if(draft.disabled&&$('quality').value==='draft')$('quality').value='balanced';}
 $('model').onchange=updatePresets;
-async function history(){const rows=await api('history');$('history').replaceChildren();for(const row of rows){const b=document.createElement('button');b.textContent=`${row.provider} · ${row.request.prompt?.slice(0,30)||'高解像度化'} · ${row.id.slice(0,8)}`;b.onclick=run(()=>follow(row.id));$('history').append(b);}}
+async function history(){const rows=await api('history');$('history').replaceChildren();for(const row of rows){const b=document.createElement('button');b.textContent=`${row.provider} · ${row.request?.prompt?.slice(0,30)||'生成結果'} · ${row.id.slice(0,8)}`;b.onclick=run(()=>follow(row.id));$('history').append(b);}}
 async function follow(id){current=id;const ticket=++serial;$('output').replaceChildren();$('cancel').disabled=false;$('upscale').disabled=true;async function poll(){if(ticket!==serial)return;try{const r=await api('job',{id,action:'status'});if(ticket!==serial)return;show(r);const done=!['running','queued','loading','generating'].includes(r.job.status);$('cancel').disabled=done;$('upscale').disabled=r.job.status!=='completed'||r.provider==='longvideo';if(r.outputUrl){const link=document.createElement('a');link.href=r.outputUrl;link.target='_blank';link.rel='noreferrer';link.textContent='生成結果を開く';$('output').replaceChildren(link);}if(!done)setTimeout(poll,2500);}catch(e){$('status').textContent=e.message;}}await poll();}
 $('provider').onchange=()=>{const p=$('provider').value;$('long').hidden=p!=='longvideo';$('short').hidden=p==='longvideo';$('plan').hidden=p!=='longvideo';$('frames').disabled=p==='krea';$('first').disabled=p==='krea';$('width').value=p==='krea'?1024:960;$('height').value=p==='krea'?1024:544;$('model').replaceChildren(new Option('一覧を更新してください',''));};$('provider').onchange();
 $('start').onclick=run(async()=>{const result=await api('service',{provider:$('provider').value,action:'start'});show(result);if(result.ready===false){$('status').textContent=result.note;return;}await refresh();});

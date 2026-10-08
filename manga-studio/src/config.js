@@ -14,6 +14,8 @@ export function loadConfig(file = process.env.MANGA_STUDIO_CONFIG || resolve(pac
   const base = dirname(resolve(file));
   const absolute = value => isAbsolute(value) ? value : resolve(base, value);
   const c = structuredClone(raw);
+  if(c.remoteOrigin){const u=new URL(c.remoteOrigin);if(u.protocol!=='https:'||u.origin!==c.remoteOrigin||u.username||u.password)throw Error('remoteOrigin はパスを含まないHTTPSのoriginを指定してください');}
+  if(c.remotePort!==undefined&&(!Number.isInteger(c.remotePort)||c.remotePort<1024||c.remotePort>65535))throw Error('remotePort は1024〜65535です');
   c.agent={...c.qwen,...c.agent};
   c.coder={...c.qwen,...c.coder};
   c.gpu={baseURL:'http://127.0.0.1:1234',enabled:false,...c.gpu};

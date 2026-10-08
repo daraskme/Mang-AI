@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1)),base=`/api/${params.get('project')}/gallery/`,token=params.get('token'),session=params.get('session')||'';
+const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1)),base=`./api/${params.get('project')}/gallery/`,token=params.get('token'),session=params.get('session')||'';
 const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 let catalog=[],selectedModel='',adapters=new Map(),serial=0,dirty=false,loadedProvider='';
 const drafts=new Map();
@@ -25,8 +25,24 @@ function draw(){
         const roleLabel=el('label','用途'),role=el('select');for(const [value,name]of [['character','人物'],['style','Style'],['other','その他']])role.add(new Option(name,value));role.value=adapters.get(item.id).role||'other';role.onchange=()=>{adapters.get(item.id).role=role.value;dirty=true;selection();};roleLabel.append(role);fields.append(weightLabel,roleLabel);card.append(fields);
       }
     }
-    const upload=el('input');upload.type='file';upload.accept='image/png,image/jpeg,image/webp';const button=el('button','サムネイルを登録');button.onclick=()=>upload.click();
-    upload.onchange=action(async()=>{const file=upload.files[0];if(!file)return;if(file.size>6*1024*1024)throw Error('画像は6MB以下で選んでください');const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});item.thumbnail=await api('model-thumbnail',{key:item.key,dataUrl});draw();$('status').textContent='サムネイルを保存しました';});card.append(button,upload);$('cards').append(card);
+    const kindNames={reference:'参考画像',training:'学習データの参考',generated:'LoRAの生成例'};
+    if(item.thumbnail)card.append(el('small',kindNames[item.thumbnail.kind||'reference']));
+    const kindLabel=el('label','登録する画像の種類'),previewKind=el('select');
+    for(const [value,name]of Object.entries(kindNames))previewKind.add(new Option(name,value));
+    previewKind.value=item.thumbnail?.kind||'reference';kindLabel.append(previewKind);card.append(kindLabel);
+    const upload=el('input');upload.type='file';upload.accept='image/png,image/jpeg,image/webp,image/avif';upload.hidden=true;
+    const button=el('button',item.thumbnail?'画像を差し替える':'画像をアップロード');button.onclick=()=>upload.click();
+    upload.onchange=action(async()=>{const file=upload.files[0];if(!file)return;if(file.size>6*1024*1024)throw Error('画像は6MB以下で選んでください');const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});item.thumbnail=await api('model-thumbnail',{key:item.key,dataUrl,kind:previewKind.value});draw();$('status').textContent='サムネイルを保存しました（全セッション共通）';});card.append(button,upload);
+    if(item.kind==='lora'){
+      const candidates=el('button','学習資料から選ぶ');
+      candidates.onclick=action(async()=>{const result=await api('model-thumbnail',{key:item.key,action:'candidates'});$('status').textContent=result.note;
+        if(!result.items.length){$('status').textContent+=' 利用できる候補がありません。';return;}
+        const chooser=el('select');chooser.setAttribute('aria-label','参考画像の候補');for(const candidate of result.items)chooser.add(new Option(candidate.name,candidate.file));
+        const use=el('button','この資料を設定');use.onclick=action(async()=>{item.thumbnail=await api('model-thumbnail',{key:item.key,file:chooser.value,kind:'training'});draw();$('status').textContent='学習データの参考サムネイルを保存しました';});candidates.replaceWith(chooser,use);
+      });card.append(candidates);
+    }
+    if(item.thumbnail){const clear=el('button','サムネイルを解除');clear.onclick=action(async()=>{await api('model-thumbnail',{key:item.key,action:'clear'});item.thumbnail=null;draw();$('status').textContent='サムネイルを解除しました。元画像は保持されています';});card.append(clear);}
+    $('cards').append(card);
   }selection();
 }
 async function load(refresh=false){

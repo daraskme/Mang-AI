@@ -1,4 +1,4 @@
-import {navigateMedia} from '/navigation.js';
+import {navigateMedia} from './navigation.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
 const owner=params.get('project'),assetId=params.get('asset'),token=params.get('token');
 // Opening another editor link in the same tab changes only the fragment.
@@ -10,8 +10,8 @@ const canvas=$('picture'),mask=$('mask'),ctx=canvas.getContext('2d'),m=mask.getC
 const back=document.createElement('a');back.textContent='漫画の文字編集へ';back.href=`/#project=${owner}&token=${token}`;back.hidden=true;document.querySelector('.media-heading').append(back);
 back.onclick=e=>{e.preventDefault();navigateMedia(back.href);};
 function message(text,error=false){$('status').textContent=text;$('status').style.color=error?'#aa493a':'';}
-async function api(action,body){const r=await fetch(`/api/${owner}/edit/${action}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},body:body?JSON.stringify(body):undefined});const value=await r.json();if(!r.ok)throw new Error(value.error);return value;}
-function fileURL(version=asset.current){return `/api/${owner}/edit/${assetId}/file?version=${encodeURIComponent(version)}&token=${encodeURIComponent(token)}`;}
+async function api(action,body){const r=await fetch(`./api/${owner}/edit/${action}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},body:body?JSON.stringify(body):undefined});const value=await r.json();if(!r.ok)throw new Error(value.error);return value;}
+function fileURL(version=asset.current){return `./api/${owner}/edit/${assetId}/file?version=${encodeURIComponent(version)}&token=${encodeURIComponent(token)}`;}
 function buttons(){for(const id of ['inpaint','mosaic','detect','autoMosaic','restore','commit'])$(id).disabled=busy||(id==='inpaint'&&asset?.kind==='video');$('cancel').hidden=!busy||!jobId;}
 async function act(fn){try{await fn();}catch(e){message(e.message,true);}}
 async function load(){asset=await api(assetId);back.hidden=!asset.panel;$('dimensions').textContent=`${asset.width} × ${asset.height}${asset.kind==='video'?` · ${asset.duration.toFixed(2)}秒`:''} · 元ファイル保持`;for(const c of [canvas,mask]){c.width=asset.width;c.height=asset.height;}maskUndo=[];drawVersions();$('commit').textContent=asset.panel?'コマに反映':'保存先を表示';$('videoControls').hidden=$('videoRange').hidden=asset.kind!=='video';$('endSeconds').value=asset.duration||0;$('timeline').max=Math.max(0,(asset.duration||0)-.05);await loadVisual();buttons();}
