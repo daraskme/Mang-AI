@@ -40,6 +40,7 @@ def main():
     args = parser.parse_args()
     runtime = ROOT / "work/runtime"
     runtime.mkdir(parents=True, exist_ok=True)
+    previous_broker = json.loads((runtime / "model-broker.json").read_text()) if (runtime / "model-broker.json").exists() else {}
     strata = ROOT / "upstream/Strata"
     coder = ROOT / "models/llm/qwen-flash-next"
     agent = ROOT / "models/llm/agents-a1"
@@ -60,6 +61,10 @@ def main():
         "gemma-4-ortenzya-31b-local": {"phase": "gemma", "port": 1241, "label": "Gemma 4 Ortenzya", "command": base + ["--port", "1241", "--model", str(gemma), "--ctx-size", "32768", "--alias", "gemma-4-ortenzya-31b-local"]},
         "qwen3.8-flash-next-q8-strata": {"phase": "coder", "port": 1242, "label": "Qwen Flash Next Q8 / Strata", "cwd": str(strata), "command": [str(strata / ".venv/bin/python"), "-m", "serve.server", "--engine", "strata", "--config", str(runtime / "strata-coder.json"), "--port", "1242"]},
     }}
+    # Rebuilding resident services must not remove an explicitly selected GLM worker.
+    glm_id = "glm-5.3-flash-orcarouter-q4-mangai"
+    if glm_id in previous_broker.get("models", {}):
+        broker["models"][glm_id] = previous_broker["models"][glm_id]
     write(runtime / "model-broker.json", json.dumps(broker, indent=2) + "\n")
     common = f"WorkingDirectory={ROOT}\n" + env_line("LD_LIBRARY_PATH", args.library_path) + env_line("MANGAI_GPU_STATE", ROOT / "work/gpu")
     units = {
@@ -71,7 +76,8 @@ def main():
     source = STUDIO / "studio.config.json"
     config = json.loads(source.read_text() if source.exists() else (STUDIO / "studio.config.example.json").read_text())
     config["agent"] = {"baseURL": "http://127.0.0.1:1234/v1", "model": "agents-a1-4b-q8", "contextWindow": 65536, "maxTokens": 8192, "vision": True}
-    config["coder"] = {"baseURL": "http://127.0.0.1:1234/v1", "model": "qwen3.8-flash-next-q8-strata", "contextWindow": 262144, "maxTokens": 16384}
+    if config.get("coder", {}).get("model") != glm_id or glm_id not in broker["models"]:
+        config["coder"] = {"baseURL": "http://127.0.0.1:1234/v1", "model": "qwen3.8-flash-next-q8-strata", "contextWindow": 262144, "maxTokens": 16384}
     config["gpu"] = {"enabled": True, "baseURL": "http://127.0.0.1:1234"}
     write(runtime / "studio.config.json", json.dumps(config, ensure_ascii=False, indent=2) + "\n")
     if args.install:

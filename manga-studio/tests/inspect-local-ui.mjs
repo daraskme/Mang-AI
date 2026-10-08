@@ -13,7 +13,8 @@ await p.route('**/*',async route=>{
  if(voice>=0)body=body.slice(0,voice)+body.slice(voice).replace('function registerUi(ctx) {','function registerUi(ctx) { window.__testSpeech=ctx.remote.speech;');
  await route.fulfill({response:r,body});
 });
-await p.goto(process.env.TEST_URL||'http://127.0.0.1:4340/?token=h6-lwxlVKH-JiMhtzyWWNXffnG5fOv3buLADGcv9UK4');
+assert(process.env.TEST_URL, 'TEST_URL must contain the current local UI URL; do not commit authentication URLs');
+await p.goto(process.env.TEST_URL);
 await p.waitForTimeout(2500);
 const notice=p.getByRole('button',{name:/^(Continue|続行|続ける)$/});if(await notice.count())await notice.click();
 const galleryLink=p.getByRole('button',{name:'▧ ギャラリー',exact:true});await galleryLink.waitFor();

@@ -52,9 +52,9 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
       compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},
       models:[{id:q.model,name:q.model==='agents-a1-4b-q8'?'Agents A1 4B Q8 · 常駐':q.model,contextWindow:q.contextWindow,maxTokens:Math.min(q.maxTokens,Math.floor(q.contextWindow/8)),input:q.vision?['text','image']:['text']}],
     },'manga-coder':{
-      displayName:'Qwen Flash Next · コーディング',api:'openai-completions',apiKeyEnv:'MANGA_CODER_API_KEY',baseURL:coder.baseURL,
+      displayName:coder.displayName||`${coder.model} · コーディング`,api:'openai-completions',apiKeyEnv:'MANGA_CODER_API_KEY',baseURL:coder.baseURL,
       compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},
-      models:[{id:coder.model,name:'Qwen Flash Next Q8 · Strata',contextWindow:coder.contextWindow,maxTokens:coder.maxTokens,input:['text']}],
+      models:[{id:coder.model,name:coder.displayName||coder.model,contextWindow:coder.contextWindow,maxTokens:coder.maxTokens,input:['text']}],
     },'manga-qwen':{
       displayName:'既存セッション互換',api:'openai-completions',apiKeyEnv:'MANGA_AGENT_API_KEY',baseURL:q.baseURL,
       compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},

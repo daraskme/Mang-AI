@@ -12,7 +12,7 @@ DeepSeek Harness を漫画制作向けに拡張するプラグインです。DSH
 |---|---|
 | 日本語脚本・台詞 | Gemma Ortenzya 31B のローカル OpenAI 互換 API |
 | 制作進行・ツール操作 | Agents A1 4B Q8を常駐させるローカルAPIとDSH |
-| コーディング | Qwen3.8 Flash Next Q8 / Strata。配置・変換済み、実機推論はVM停止待ち |
+| コーディング | GLM-5.3-Flash OrcaRouter Uncensored Q4_K_M / custom Strata。共通API経由で必要時に起動し、応答後600秒保持 |
 | 文字なしのコマ絵・単画像 | 既存 Krea 2 Studio の公式 Diffusers Python 推論。既定は Turbo |
 | 動画・音声 | 既存 MiniMax H3 Studio |
 | 自然言語キャプション | Caption Studio の画像認識 Gemma |
@@ -29,9 +29,15 @@ Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の
 
 空吹き出しの実機試験は `node tests/live-balloons.mjs`。GemmaとKromaを読み込むので、実行前にGPU・RAM負荷を通知してください。結果は `.test-output/balloons-live-*/` に保存し、空欄・本数・文字位置を目視確認します。自動フィットや全モデルの品質保証の試験ではありません。
 
+## 検証結果と導入時の注意
+
+GLMの最新結果は[Gen5・262K実入力検証](docs/glm-validation-2026-10-09.md)。260090入力＋512生成で17.1 tokens/s、3位置検索に成功しました。50 tokens/sと元FP8相当品質は未達／未検証です。通常設定と固定予算ベンチマークの差も同資料に記載しています。
+
+以下の`/mnt/solidigm-b/Mang-AI`は検証PCの配置例です。新しい環境では自分のclone先へ読み替え、[固定ソースの復元](../integrations/README.md)とモデル準備を先に行ってください。`npm ci`はモデルを取得しません。DSHは固定Node 24.13.0で検証しており、システムNode 24.20.0ではnative loaderの起動に失敗しました。直接起動・検査するときは`node_modules/node/bin/node`を使います。
+
 ## 現在の状態と起動
 
-アプリ、依存関係、Krea 2・H3・キャプション・LoRA 学習環境を `/mnt/solidigm-b/Mang-AI/` に配置しています。司令塔はAgents A1 4B Q8、日本語創作はOrtenzya 31B Q8、キャプションはUNSEEN Gemma 4 26B Q4と画像プロジェクターです。共通APIは `127.0.0.1:1234`、A1は1240で常駐、Gemmaは1241、コーディング用Strataは1242で必要時に起動します。Qwen Flash Next Q8の実機推論は利用者によるVM停止待ちです。[構成・導入・検証範囲](docs/local-agent-architecture.md) を参照してください。
+アプリ、依存関係、Krea 2・H3・キャプション・LoRA 学習環境を `/mnt/solidigm-b/Mang-AI/` に配置しています。司令塔はAgents A1 4B Q8、日本語創作はOrtenzya 31B Q8、キャプションはUNSEEN Gemma 4 26B Q4と画像プロジェクターです。共通APIは `127.0.0.1:1234`、A1は1240で常駐、Gemmaは1241、coderのGLMは1243で必要時に起動します。Qwen Strataの1242番モデル定義も残しています。[構成・導入・検証範囲](docs/local-agent-architecture.md) と [GLM継続利用の手順](docs/glm-coding-session.md) を参照してください。
 
 ```bash
 cd /mnt/solidigm-b/Mang-AI/manga-studio
@@ -54,9 +60,9 @@ DSH は空きポートで起動し、URL を表示します。自動でブラウ
 
 単独制作は [画像制作](docs/image-production-policy.md)、[動画制作](docs/video-production-policy.md)、[LoRA制作](docs/lora-production-policy.md) に分けています。A1は `media_workflow_guide(workflow:image / video / lora)` で工程表を読み、必要な `section` だけ参照します。LoRAは素材収集→`@style` / `@chara`等と用途の設定→UNSEEN Gemmaでキャプション→検査・TXT保存→学習→生成比較の順です。Krea2学習は接続済み、H3新規学習・動画全体のキャプション・専用の自動収集は未統合です。H3を誤ってKrea2で学習しないよう、`lora_prepare(family:h3)` は実行前に拒否します。
 
-### A1 / Gemma / Qwen
+### A1 / Gemma / GLM
 
-GLM-5.3 Flashの旧llama.cpp環境は削除済みですが、その後の依頼でprivateのカスタムStrataを導入し、OrcaRouter Uncensored Q4_K_Mへ切り替えています。[現行の起動・検証記録](docs/glm-custom-strata.md) を参照してください。通常のcoderはQwenのままで、GLMは専用APIの1243番ポートへ接続して使います。[旧環境の検証記録](docs/glm-flash-validation.md) と専用検査は履歴として保存し、自動で旧モデルを再取得・起動しません。
+GLM-5.3 Flashの旧llama.cpp環境は削除済みですが、その後の依頼で公開カスタムStrataを導入し、OrcaRouter Uncensored Q4_K_Mへ切り替えています。[現行の起動・検証記録](docs/glm-custom-strata.md) を参照してください。2026-10-09から通常のcoderは共通APIのGLMを使います。[設定・保持・解放・expert配置の観測](docs/glm-coding-session.md) に手順をまとめています。[旧環境の検証記録](docs/glm-flash-validation.md) と専用検査は履歴として保存し、自動で旧モデルを再取得・起動しません。
 
 LM Studio や llama.cpp などで各モデルを OpenAI Chat Completions 互換 API として起動し、`agent`（司令塔）、`gemma`（創作）、`coder`（コーディング）の `baseURL` / `model` を実際の値にします。既定URLは `http://127.0.0.1:1234/v1`。modelには **`GET /v1/models` が返すid** を指定します。`qwen` は旧構成の互換設定です。管理下のGPU切替を使う場合は [常駐モデルの導入手順](docs/resident-model-setup.md) に従います。
 
@@ -85,7 +91,7 @@ Krea 2 の新しい画像は `krea2-darask/outputs/`、H3 は `minimaxH3-darask/
 
 旧Qwen 27BによるWeb検索と生成画面ツール呼び出し、実Ortenzyaによる日本語脚本の生成記録があります。新しいA1でもツール呼び出しと画像入力を確認しました。A1は常駐し、大規模モデルは共通GPUキューで順に実行・解放します。画像認識には読順や動作の誤認があるため、設定・脚本・利用者の指摘を併せて判断します。
 
-Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。通常はA1を使い、コーディングのsubagentだけ `manga-coder / qwen3.8-flash-next-q8-strata` を指定します。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルモデルが作ります。
+Agent Teams、Auto Authorization Review、Developer Tools、Voice input、Shell、Agent loop、Subagent、Web searchを有効化しています。通常はA1を使い、コーディングのsubagentだけ `manga-coder / glm-5.3-flash-orcarouter-q4-mangai` を指定します。起動済みDSHが以前のモデルを表示する場合は作業の区切りで再起動してください。音声入力はローカルSenseVoiceです。Web検索はBing RSSを既定とし、設定からSearXNGにも接続できます。検索語は検索サービスへ送信し、回答はローカルモデルが作ります。
 
 制作スペースの **モデル・LoRA** ではKrea/Kroma・H3・長尺環境の一覧を表示し、モデル、LoRAごとの強度と人物/Style用途をセッションに保存できます。自分のPNG/JPEG/WebPをサムネイルとして登録できます。動画生成の作品名を指定すると、ギャラリーの **動画作品** に生成・高解像度化した版をまとめます。既存動画はセッションごとの「既存の動画」にまとめます。
 

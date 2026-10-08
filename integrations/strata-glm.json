@@ -2,8 +2,8 @@
   "name": "strata-glm",
   "path": "upstream/Strata-GLM",
   "url": "https://github.com/daraskme/Strata-GLM.git",
-  "revision": "feceb14ae7b0374b527b55262a1941fa49de9466",
-  "private": true,
+  "revision": "9e0b779d963c2b1ccc1925864a2247c92e16b43a",
+  "private": false,
   "optional": true,
   "upstream": {
     "url": "https://github.com/mw00/project-maya.git",

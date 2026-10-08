@@ -1,4 +1,9 @@
-# GLM-5.3 Flash / カスタムStrata
+# GLM-5.3 Flash / カスタムStrata（初期導入の記録）
+
+> 現行構成は[2026-10-09 / Gen5・262K検証](glm-validation-2026-10-09.md)。以下のGen1・128K・privateという記述は当時の履歴であり、現在は両リポジトリを公開しています。通常のcoderもGLMへ移行済みです。
+
+2026-10-09追加：brokerでの継続保持、思考budgetの設定化、3段階expert配置の観測は
+[GLMコーディングの継続利用](glm-coding-session.md)を参照。以下の2026-10-08測定値は当時の設定の記録。
 
 2026-10-08。利用者の再導入・private管理の指示に従い、
 [daraskme/Strata-GLM](https://github.com/daraskme/Strata-GLM) を作成し、GitHubの`PRIVATE`を確認。
@@ -124,3 +129,26 @@ hintは元の0へ復元した。BIOS変更、リンク再訓練、GPUリセッ�
 `LnkCtl2`/`LnkSta2`を確認する。本セッションの`sudo -n`はパスワード必須で詳細を取得できなかった。
 パスワードをチャットへ貼らない。投稿の22.2 tokens/sは別ハードウェア・IQ1量子化の表示であり、
 このQ4構成の実測値として扱わない。
+
+
+## Gen5復帰後の比較用オプション
+
+`tools/run_glm.py --cpu-plan 012234556`で、RAMに存在する非VRAM expert数0〜8に対する
+CPU担当数を固定できる。省略時は従来の起動時校正を使う。SSD missはこの桁数の対象に含めない。
+`--prefetch-experts 0..2`はRAMからVRAMへの先行コピー、`--lookahead-layers 0..4`は
+SSDからRAMへの先行読み込み。両方とも既定0。先読みが増えるほど速くなるとは限らない。
+
+Mang-AI登録スクリプト`manga-studio/scripts/configure-glm-coder.py`も`--cpu-plan`と
+`--lookahead-layers`を受け付ける。まず`--apply`なしで確認できる。これらを省略して再登録すると
+自動CPU分担・先読みなしへ戻る。登録はA1・他モデルを維持し、サービスを自動再起動しない。
+検証は`python -m unittest discover -s manga-studio/tests -p test_glm_config.py`。
+固定RAM95 GiBは比較条件であり、通常運用の可変RAM予算を置き換える既定値ではない。
+
+
+このPCのGen5検証後の登録は`python manga-studio/scripts/configure-glm-coder.py --context 262144 --apply`。
+262144指定時はRAM headroom16 GiBを設定し、空き容量に合わせてexpert RAM予算を決める。
+これはOSの空きRAMが常時16 GiBになる保証ではなく、ロード後も監視する。通常の先読みは0、CPU分担はauto。
+131072へ戻す場合は同じスクリプトに`--context 131072 --apply`を渡す。サービス反映は稼働中の仕事がない状態で行う。
+
+共通broker経由の機能検査では、`tools/bench_glm.py --url http://127.0.0.1:1234 --model glm-5.3-flash-orcarouter-q4-mangai --pack <packの絶対パス> --case smoke`を使える。
+返されたtoolは実行しない。コードは限定されたclamp関数のASTを検査して8入力で評価する。

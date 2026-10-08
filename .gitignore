@@ -54,3 +54,7 @@ work/
 *.log
 **/.env*
 !**/.env.example
+
+# Local model configuration backups and temporary replacements
+*.before-glm-*
+*.glm-*
