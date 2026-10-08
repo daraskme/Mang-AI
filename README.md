@@ -1,112 +1,128 @@
-# Mang-AI — ローカル漫画・画像・動画制作
+# Mang-AI
 
-日本語のQwenエージェント、Gemmaの創作・キャプション、Krea 2、MiniMax H3、LoRA学習、吹き出し編集、IOPaint、モザイクをまとめた制作環境です。実体は `/mnt/solidigm-b/Mang-AI/`。KDEタスクバーの **Mang-AI** から起動します。
+A1を指揮役に、ローカルモデルで漫画・画像・動画・コードを制作する環境です。DeepSeek Harness（DSH）のセッションに作品と編集履歴を結び付け、脚本、作画、吹き出し、日本語文字、画像補完、モザイク、LoRA学習を扱います。GLMはコーディングを担当します。
 
-**メディアギャラリー**はサイドバーの「ギャラリー」から開けます。データセット、セッションごとの制作中の漫画、生成画像・動画を閲覧し、キャプション確認・動画再生・編集再開ができます。エージェントには「ギャラリーを開いて」と依頼できます。
+**現状は個人ワークステーションで検証した開発版です。** ソースをcloneしただけではモデルやGPU環境は揃いません。確認済みの機能と未検証の品質・性能を以下に分けて記載しています。
 
-詳しい操作・モデル構成・検証方法は [制作ツールの説明](manga-studio/README.md)、ソースの復元は [統合環境の説明](integrations/README.md) を参照してください。以下は同梱する小説執筆環境の説明です。
-
-## 長編小説執筆環境
-
-三人称多元視点の日本語長編Web小説を、設定・時系列・人物像・伏線・情報格差を破綻させずに執筆するためのGrok用リポジトリです。1リポジトリを1作品として使います。
-
-Grokは `AGENTS.md` を自動で読みます（配置・状態・完了手順・シェルの正本）。本文の表記・台詞・表現の採否・確認範囲は `guidelines/` が正本です。利用者向けの詳しい運用手順は `MANUAL.md` にあります。`MANUAL.md` は冒頭で Grok Build と NovelAI 公式APIを説明し、続けて「本文を書く経路」と「書けた本文を加工する経路」を分けて案内します。
-
-## 必要な環境
-
-ローカルモデルでセッションごとに漫画を作る **DSH 漫画制作ツール** は [manga-studio/README.md](manga-studio/README.md) を参照してください。Gemma が日本語脚本、Qwen がエージェント操作、Krea 2 公式 Python が作画を担当し、吹き出しと文字は専用ツールで入力します。起動は `manga-studio/` で `npm start`。以下は従来の小説執筆環境の案内です。
-
-制作環境の実体は `/mnt/solidigm-b/Mang-AI/` にあります。Krea 2 画像生成、MiniMax H3 動画生成、画像認識による自然言語キャプション、Krea 2 LoRA 学習・登録を DSH の専用ツールから操作できます。各環境のモデル・仮想環境も同じフォルダ配下です。起動と依頼例は上記マニュアルにまとめています。
-
-IOPaintによる画像補完とmosaic_editorによる画像・動画モザイクも統合しています。共通GUIで自動検出・手描き編集・履歴復元ができ、エージェント用の編集ツールからも操作できます。
-
-`audit-repo.py` は小説環境と追加ソースを監査し、モデル・仮想環境・外部アプリ・移行アーカイブ・データセット・学習履歴のツリーは走査しません。漫画ツールは `manga-studio/` の `npm test` と `npm run test:dsh`、キャプション環境は `caption-studio/` の `runtime/node --test tests/*.test.mjs` で検証します。
-
-| 必要なもの | 用途 |
+| 目的 | 入口 |
 |---|---|
-| Grok（CLI / Build TUI） | 執筆・診断・Skill実行 |
-| bash | `scripts/*.sh` |
-| Python 3.11以降 | `scripts/*.py` |
-| GNU grep | `scripts/check.sh` のPCRE検査 |
+| 画面の使い方・制作機能 | [制作ツールREADME](manga-studio/README.md) |
+| A1とGPUモデルの導入 | [常駐モデルの設定](manga-studio/docs/resident-model-setup.md) |
+| GLMの導入・保持・切替 | [GLMコーディング](manga-studio/docs/glm-coding-session.md) |
+| 262K入力の測定値・制約 | [GLM検証結果](manga-studio/docs/glm-validation-2026-10-09.md) |
+| 外部環境の取得元・固定版 | [integrations](integrations/README.md) |
+| 小説執筆の規約・Skill | [小説執筆ガイド](docs/novel-writing.md)、[MANUAL](MANUAL.md) |
+| 検証資料の一覧 | [ドキュメント索引](docs/README.md) |
 
-## セットアップ
+## 構成
 
-このディレクトリで Grok を起動し（推奨: `grok --sandbox workspace`）、次を実行します。
+```mermaid
+flowchart LR
+  U[利用者 / DSHセッション] --> A[A1 4B Q8・常駐の指揮役]
+  A --> B[共通モデルAPI・GPUキュー]
+  B --> G[GLM・コーディング]
+  B --> C[Gemma・脚本 / キャプション]
+  B --> M[Krea 2 / H3 / 編集 / 学習]
+  U --> W[制作スペース・ギャラリー]
+  G --> V[VRAM: dense・KV・頻出expert]
+  V --> R[RAM: expert保持・CPU計算]
+  R --> S[SSD: 残りのexpert]
+```
+
+A1は常駐し、大きなGPU工程はキューで調整します。GLMは必要時に起動し、応答後600秒保持します。別工程が待つと、現在の生成を終えてから解放します。会話はクライアントが送り、A1とGLMのKVキャッシュは共有しません。
+
+| 役割 | 構成 |
+|---|---|
+| 指揮・ツール操作 | Agents A1 4B Q8、API `127.0.0.1:1240` |
+| コーディング | OrcaRouter GLM-5.3-Flash Uncensored Q4_K_M、[Strata-GLM](https://github.com/daraskme/Strata-GLM)、内部API `1243` |
+| 共通API | OpenAI Chat Completions互換、`http://127.0.0.1:1234/v1` |
+| 創作・認識 | Ortenzya 31B / UNSEEN Gemma、工程別に切替 |
+| 作画・動画 | Krea 2 / MiniMax H3。文字は別レイヤーで編集 |
+
+## 導入
+
+確認環境は **NixOS、i9-12900KS、DDR4-3200 128 GiB、RTX PRO 6000 Blackwell 96 GB、NVMe SSD**。GLMはCUDA 13 / sm_120でビルドしました。下記の軽量試験にはGPUやモデルは不要ですが、実制作には各モデル・バックエンドが必要です。
 
 ```bash
-chmod +x scripts/*.sh
-bash scripts/init-work.sh
+git clone https://github.com/daraskme/Mang-AI.git
+cd Mang-AI/manga-studio
+npm ci
+# NixOSでプロジェクト内のNodeを初めて準備する場合
+node scripts/prepare-nixos.mjs
+```
+
+DSHの実行には依存として固定した **Node 24.13.0** を使います。システムNode 24.20.0ではnative loaderの起動エラーを確認しました。Nodeの一般的な最低バージョン条件だけでは互換性を保証しません。
+
+モデル接続は[設定例](manga-studio/studio.config.example.json)と[導入手順](manga-studio/docs/resident-model-setup.md)に従います。GLMのソースは別リポジトリで、[固定コミット](integrations/strata-glm.json)から復元・ビルドします。重みとpackは別途取得・作成してください。GLMのGGUFだけで約179.72 GiBあり、pack・ビルド・他モデル分の空きSSDも必要です。
+
+準備後、`manga-studio/`から起動します。
+
+```bash
+node_modules/node/bin/node scripts/launch.mjs
+```
+
+GUIのURLは起動時に表示されます。ローカル用の認証URLをREADME・ログ・Gitへ貼らないでください。`/mnt/solidigm-b/Mang-AI`や`/etc/nixos#cuda`が過去資料に出る場合は測定PC固有の場所です。後者のNix flakeはこのリポジトリに含まれません。
+
+## GLMの検証結果（2026-10-09）
+
+**262144のコンテキスト枠で、実入力260090 tokensから3位置の検索に成功しました。生成は17.1 tokens/sで、目標50 tokens/sには届いていません。元FP8モデルとの品質同等性も未検証です。**
+
+| 実入力 / 生成 | prefill（入力処理） | decode（生成） | 検索 |
+|---|---:|---:|---|
+| 8180 / 512 tokens | 9.77秒、837.4 tokens/s | 15.9 tokens/s | 3/3 |
+| 260090 / 512 tokens | 426.49秒、609.8 tokens/s | 17.1 tokens/s | 3/3 |
+
+prefix再利用は0。長文のHTTP全体は457秒、モデルの初期ロード約70秒は別です。これは合言葉検索と512-token生成の試験で、生成コードの完成・実行正答率を示しません。
+
+| 262K試験のメモリ | 実測 |
+|---|---:|
+| GPU dense / KV・state / expert pool | 5.34 / 8.74 / 63.13 GiB |
+| expert RAM tier | 94.98 GiB（固定予算の比較試験） |
+| GPU総使用量の最大 | 88.44 GiB（A1・画面等を含む） |
+| 空きRAM / VRAMの最小 | 12.62 / 7.15 GiB |
+
+通常設定はcontext 262144、RAM headroom 16 GiB、CPU 8 workers・自動分担、先読み0です。可変予算でRAM tier 93.96 GiBを観測しましたが、17.1 tokens/sは固定94.98 GiBの試験値です。通常設定では共通API経由の日本語一致、clampの8入力、tool JSONの3検査を通しました。
+
+### 注意点
+
+- **262144は入力と出力の合計枠。** 最大出力16384を全て確保すると、入力・template・toolに使える枠は245760以下です。登録スクリプトの既定は131072なので、262144を明示します。
+- 長文試験でシステム全体のzram swap-outが約944 MiB増加しました。RAM headroomは予算計算上の余裕であり、常時空きRAMの保証ではありません。
+- UEFI変更後、負荷中のPCIe Gen5 x16を確認。アイドル時のGen1表示だけでは異常とは判断できません。DMA測定と実際のhost-mapped転送の速度は異なります。
+- Q4_K_Mの重みを使用しており、独自の再量子化、単一GPUのMTP、DMAへのランタイム変更は未実装です。先読みやCPU固定配分は一律改善せず、通常設定に採用していません。
+- A1のhealth維持は確認しましたが、重い指揮タスクのp95遅延は未測定です。長文試験ではGPU温度最大89℃を観測しました。電力・冷却設定は変更していません。
+- APIはlocalhost用です。公開ネットワーク向けの認証・運用構成ではありません。モデルの`tool_choice=required`強制は未対応です。
+- H3の新規LoRA学習、吹き出しの自動検出・文字の自動フィット等は未実装です。作画・学習の確認範囲は[機能監査](manga-studio/docs/feature-audit-2026-10-05.md)と[実生成確認](manga-studio/docs/lora-generation-validation-2026-10-08.md)を参照してください。
+
+条件別の全測定、採否、再現方法、残る評価計画は[詳細なGLM検証](manga-studio/docs/glm-validation-2026-10-09.md)にまとめています。
+
+## 開発・検査
+
+```bash
+# manga-studio/で実行。いずれも実モデルの起動は不要
+node_modules/node/bin/node --test tests/*.test.js
+TEST_PYTHON=/absolute/path/to/python3 node_modules/node/bin/node tests/dsh-smoke.mjs
+cd ..
+python3 -m unittest discover -s manga-studio/tests -p 'test_*.py'
 python3 scripts/audit-repo.py
 ```
 
-`FAIL 0` で導入完了です。`init-work.sh` は既存ファイルを上書きしません。
+2026-10-09の公開前検査ではNode 41件、Python 19件、実DSH＋模擬APIの統合試験が成功。GLM側のPython検査は15件です。これらは実モデル品質の検証を代替しません。小説の表記ルールを変更する場合は追加で`bash scripts/eval.sh`を実行します。
 
-NovelAI の公式APIを使う場合だけ、トークンを自分で置きます。配布物にトークンは含まれません。NovelAIの利用は、NovelAIの利用規約およびコンテンツポリシーに従ってください。本パッケージはそれらの許諾を含みません。
-
-```bash
-cp templates/nai-api.env.example .env
-```
-
-`.env` の `pst-ここに貼る` を自分の Persistent API Token に差し替え、`chmod 600 .env` します。チャットに貼らないでください。
-
-## 使い方
-
-作業は **書く** と **加工する** に分かれます。詳細と経路の違いは `MANUAL.md` の §4・§7・§8 です。
-
-### 小説を書く
-
-| 手元にあるもの | 依頼例 |
-|---|---|
-| 世界観やプロットから長編を始めたい | `世界観とプロットを設計したい` のあと `第1話を書いて` |
-| 投稿先や読者への約束を詰めたい | `/novel-plot-advisor 序盤3話の読者への約束を詰めたい` |
-| 通貨・旅程・文化を詰めたい | `/novel-worldbuilding-advisor 大陸間交易の通貨を設計したい` |
-| 設計済みの続きを書く | `第12話を書いて` または `/long-novel-orchestrator 第12話` |
-| 既存のイラストから挿絵付き短編を書く | `/illust-r18-novel` と画像フォルダ（新しい絵は出さない） |
-| 既存本文を検査・改稿する | `/validate-episode 第12話を検査して` |
-| 成人向け場面の文体 | 対象と条件を明示して `/novel-write-r18` |
-
-長編では執筆前に `world-bible/`、`work/character-sheet-*.md`、`work/pov-plan.md`、`work/plot.md` を埋めます。第3話まで書けたら、確定本文から `work/style-samples.md` を作ります。
-
-### 書けた小説を加工する
-
-| やりたいこと | 依頼例 |
-|---|---|
-| 挿絵マーカー付き本文をPDFにする | `/illust-novel-pdf`（既存画像を埋め込む。新しい絵は出さない） |
-| 小説を漫画脚本にし、ページ画像を生成する | `/novel-to-manga-script` のあと承認して `/nai-v5-prompt-designer`。1ページ2〜4コマ |
-| 小説をセリフ付き1枚絵にする | `/novel-to-dialogue-illust` のあと承認して `/nai-v5-prompt-designer`。コマ割りなし、フキダシ1〜2 |
-| 挿絵1枚だけ生成する | `/nai-v5-prompt-designer`。1生成＝1ページ |
-
-イラストから短編を書いたあとの次工程は通常PDFです。プロットから書いた長編を絵にするなら漫画化です。縦スクロール連作の画像化はしません。
-
-## 主な検査
-
-```bash
-bash scripts/check.sh --strict work/drafts/episode012.txt
-python3 scripts/normalize_blanklines.py --check work/drafts/episode012.txt
-bash scripts/chars.sh work/drafts/episode012.txt
-python3 scripts/state_check.py --strict
-bash scripts/eval.sh
-```
-
-`[NG]` は表記として直します。`[警告]` は候補で、採否は `guidelines/05-ai-guardrails.md` §3-4 です。警告の件数は完成条件にしません。本文と台帳の意味的な整合は、Skillの目視手順で確認します。`eval.sh` はテンプレート同梱の固定データに対する回帰テストです。
-
-NovelAI のドライラン（トークン不要）:
-
-```bash
-python3 scripts/nai_generate.py --dry-run work/drafts/<prompt>.md
-```
-
-## ファイルの役割
+## リポジトリの役割
 
 | 場所 | 内容 |
 |---|---|
-| `AGENTS.md` | Grokが自動で読む。配置・状態・完了手順・シェルの正本。本文規約は `guidelines/` |
-| `LICENSE` | 利用条件 |
-| `MANUAL.md` | 詳細な運用マニュアル |
-| `.agents/skills/` | 執筆・診断・相談ワークフロー |
-| `.grok/config.toml` | プロジェクト設定 |
-| `guidelines/` | 正書法・視点・構造・改稿の規約 |
-| `templates/` | 作品設計と状態管理の雛形 |
-| `tests/` | 検査スクリプトの回帰フィクスチャ |
-| `work/` | プロット、人物、本文、状態台帳（`init-work.sh` が生成） |
-| `world-bible/` | 世界観正典、時系列、確定事項（`init-work.sh` が生成） |
+| `manga-studio/` | GUI、DSHプラグイン、GPUキュー、モデル管理、試験 |
+| `integrations/` | 外部コードの固定版・差分・復元情報 |
+| `docs/` | 資料索引、小説ガイド、公開物の扱い |
+| `guidelines/`、`.agents/skills/`、`templates/` | 小説の規約・手順・雛形 |
+| `scripts/`、`tests/` | 小説環境の初期化・監査・回帰試験 |
+| `upstream/`、`models/`、`work/`、`secrets/` | 各PCのローカルデータ。Git対象外 |
+
+モデル重み、作品、会話、認証情報、仮想環境、大容量の実行ログは配布物に含めません。公開する検証JSONと人工的な評価用入力は推論エンジン側へまとめています。[公開物の方針](docs/publication.md)も参照してください。
+
+## 利用条件・謝辞
+
+同梱の小説執筆パッケージは[LICENSE](LICENSE)に従います。第三者コード・モデル・サービスにはそれぞれの利用条件が適用されます。リポジトリの公開を、全構成要素に対する新しい一括ライセンスの付与とは扱いません。
+
+GLMエンジンは[Project Maya](https://github.com/mw00/project-maya) / [Strata](https://github.com/Niko1221/Strata)を継承し、元のMIT表示を維持しています。源暎アンチックは[OFL表示](manga-studio/docs/third-party-fonts.md)とともに同梱しています。各モデルの取得・再利用条件は配布元で確認してください。

@@ -4,6 +4,16 @@ import { mountProgress } from '/progress.js';
 import { navigateMedia } from '/navigation.js';
 
 const $=id=>document.getElementById(id);
+const fontNote=document.createElement('p');fontNote.className='muted';fontNote.append('漫画の文字：源暎アンチック v6 · ');
+const fontLicense=document.createElement('a');fontLicense.href='/fonts/genei-antique/OFLicense.txt';fontLicense.target='_blank';fontLicense.rel='noopener';fontLicense.textContent='フォントの利用条件';fontNote.append(fontLicense);document.querySelector('.inspector-heading').append(fontNote);
+let embeddedFont;
+async function downloadFont(){
+  if(!embeddedFont)embeddedFont=Promise.all([
+    fetch('/fonts/genei-antique/GenEiAntiqueNv6-M.ttf').then(async r=>{if(!r.ok)throw Error('漫画用フォントを読み込めませんでした');const blob=await r.blob();return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}),
+    fetch('/fonts/genei-antique/OFLicense.txt').then(r=>{if(!r.ok)throw Error('フォントのライセンスを読み込めませんでした');return r.text();}),
+  ]).then(([dataURL,license])=>({dataURL,license})).catch(error=>{embeddedFont=undefined;throw error;});
+  return embeddedFont;
+}
 const hash=new URLSearchParams(location.hash.slice(1));
 const projectId=hash.get('project'),token=hash.get('token');
 const progressCSS=document.createElement('link');progressCSS.rel='stylesheet';progressCSS.href='/progress.css';document.head.append(progressCSS);
@@ -14,7 +24,9 @@ galleryButton.onclick=()=>act(async()=>{if(hash.get('embedded')!=='1')requireSav
 let project=null,pageIndex=0,selected='',draft=null,dirty=false,busy=false,drag=null;
 window.mangAIHasUnsavedChanges=()=>dirty||$('scriptDialog').open;
 const imageURLs=new Map();
-const fields=['speaker','text','kind','direction','x','y','width','height','fontSize','tailX','tailY'];
+const shapeLabel=document.createElement('label');shapeLabel.textContent='吹き出しの枠';
+const shapeInput=document.createElement('select');shapeInput.id='shape';for(const [value,label]of [['auto','自動（作画に合わせる）'],['art','絵の空吹き出しを使う（文字のみ）'],['overlay','枠と尾を別に重ねる']])shapeInput.add(new Option(label,value));shapeLabel.append(shapeInput);$('kind').closest('.field-grid').after(shapeLabel);
+const fields=['speaker','text','kind','shape','direction','x','y','width','height','fontSize','tailX','tailY'];
 const directionHelp=document.createElement('p');directionHelp.className='muted';directionHelp.textContent='台詞は縦書きが基本です。上から下、列は右から左へ読みます。縦書きでは、改行は次の左列へ送ります。';$('direction').closest('.field-grid').after(directionHelp);
 $('direction').querySelector('option[value="vertical"]').textContent='縦書き（基本）';
 const verticalizeButton=document.createElement('button');verticalizeButton.id='verticalize';verticalizeButton.textContent='このページの台詞を縦書きに';verticalizeButton.className='save-button';directionHelp.after(verticalizeButton);
@@ -27,6 +39,9 @@ const artButton=document.createElement('button');artButton.id='editArtwork';artB
 artSection.append(artHeading,artSelect,artButton);document.querySelector('.inspector').append(artSection);
 const generationSection=document.createElement('section');generationSection.className='dialogues';
 const generationHeading=document.createElement('h2');generationHeading.textContent='作画モデル';
+const balloonLabel=document.createElement('label');balloonLabel.textContent='次の作画の吹き出し';
+const balloonMode=document.createElement('select');balloonMode.id='balloonMode';balloonMode.add(new Option('空の吹き出しを絵と一緒に生成','generated'));balloonMode.add(new Option('枠も編集ツールで重ねる','overlay'));balloonLabel.append(balloonMode);generationSection.append(balloonLabel);
+const balloonHelp=document.createElement('p');balloonHelp.className='muted';balloonHelp.textContent='空の吹き出しに、文字だけを後から配置します。形や尾は絵の一部です。生成後、文字の位置と大きさを合わせてください。';generationSection.append(balloonHelp);
 const generationModel=document.createElement('select');generationModel.id='generationModel';generationModel.setAttribute('aria-label','作画モデル');generationModel.add(new Option('既定のKreaモデル',''));
 const modelRefresh=document.createElement('button');modelRefresh.id='refreshModels';modelRefresh.textContent='モデル一覧を更新';
 generationSection.append(generationHeading,generationModel,modelRefresh);document.querySelector('.inspector').append(generationSection);
@@ -88,7 +103,7 @@ function drawAll(jobs=[]){
 }
 function selectBubble(id){
   selected=id;draft=structuredClone(currentPage()?.bubbles.find(b=>b.id===id)||null);$('selection').value=draft?id:'';
-  if(draft)draft.direction??='vertical';
+  if(draft){draft.direction??='vertical';draft.shape??='auto';}
   for(const field of fields){$(field).value=draft?.[field]??'';$(field).disabled=!draft;}
   $('remove').disabled=!draft;$('save').disabled=!draft||!dirty;drawCanvas();
 }
@@ -133,7 +148,7 @@ $('canvas').addEventListener('pointercancel',()=>{drag=null;});
 $('refresh').onclick=()=>act(()=>load());
 artButton.onclick=()=>act(async()=>{requireSaved();message('画像編集を準備しています');const result=await api('open-edit',{pageId:currentPage().id,panelId:artSelect.value});navigateMedia(result.url);});
 $('approve').onclick=()=>act(async()=>{requireSaved();const result=await api('approve',{revision:project.revision});project=result.project;drawAll();message('脚本を確定しました。作画を開始できます');});
-$('render').onclick=()=>act(async()=>{requireSaved();message('GPUを使用してこのページを作画します');const {job}=await api('render',{pageId:currentPage().id,...generationModel.value?{model_id:generationModel.value,preset:'turbo8'}:{}});message(`Krea 2 の生成キューに追加しました · ${job.id.slice(0,8)}`);await load(true);});
+$('render').onclick=()=>act(async()=>{requireSaved();message('GPUを使用してこのページを作画します');const {job}=await api('render',{pageId:currentPage().id,balloonMode:balloonMode.value,...generationModel.value?{model_id:generationModel.value,preset:'turbo8'}:{}});message(`Krea 2 の生成キューに追加しました · ${job.id.slice(0,8)}`);await load(true);});
 $('script').onclick=()=>{if(!project)return;const script={pages:project.pages.map(({layout,purpose,panels})=>({layout,purpose,panels:panels.map(({action,artPrompt,dialogue})=>({action,artPrompt,dialogue}))}))};$('scriptText').value=JSON.stringify(script,null,2);$('scriptDialog').showModal();};
 $('closeScript').onclick=()=>$('scriptDialog').close();
 $('saveScript').onclick=()=>act(async()=>{requireSaved();const result=await api('script',{script:JSON.parse($('scriptText').value),revision:project.revision});project=result.project;pageIndex=0;selected='';draft=null;drawAll();$('scriptDialog').close();message('脚本を保存しました。内容を確認し、確定してください');});
@@ -141,7 +156,7 @@ $('export').onclick=()=>act(async()=>{requireSaved();const result=await api('exp
 async function svgForDownload(){
   requireSaved();const page=currentPage();if(!page)throw new Error('ページがありません');const images={};
   for(const panel of page.panels)if(panel.image){const response=await fetch(`/api/${projectId}/${panel.image}`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw Error('書き出すコマ画像を読み込めませんでした');const blob=await response.blob();images[panel.id]=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
-  return pageSVG(page,images);
+  return pageSVG(page,images,false,await downloadFont());
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 $('downloadSvg').onclick=()=>act(async()=>{download(new Blob([await svgForDownload()],{type:'image/svg+xml'}),`${currentPage().id}.svg`);});

@@ -6,7 +6,7 @@
       "url": "https://github.com/daraskme/krea2-darask.git",
       "revision": "af53746e5880c26b3798b077a5f2e14868a13408",
       "patch": "krea2.patch",
-      "sha256": "403f0dac13ea8262b50d2631f29e5c9d6b4845836a719346e8218651ed57ee3d"
+      "sha256": "ffe24ae2e2f20f05e5730f96739abeaa5de3841b66547c9920e77433ec36ac6c"
     },
     {
       "name": "h3",
@@ -14,7 +14,7 @@
       "url": "https://github.com/daraskme/minimaxH3-darask.git",
       "revision": "151ac0483315b598405bc7f0dd5f3190859f54c5",
       "patch": "h3.patch",
-      "sha256": "d71bd8b921195d51e124256182a9a1386962a77fb912a3acd7f702718680b733"
+      "sha256": "78cf3f017c66e22a181d6a047c7bef059a414e397af548ce51e87fcef5dedc5f"
     },
     {
       "name": "latent-upscaler",
@@ -45,6 +45,11 @@
       "path": "upstream/krea-2",
       "revision": "db3984fbc6e13b34c0064990fc2d95ac64d00058",
       "url": "https://github.com/krea-ai/krea-2.git"
+    },
+    "strata": {
+      "path": "upstream/Strata",
+      "revision": "6f32ec070f23ced9f50e704d854d775da52591ab",
+      "url": "https://github.com/Niko1221/Strata.git"
     }
   },
   "longvideos": {

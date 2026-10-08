@@ -99,6 +99,8 @@ test('Gemma cannot overwrite concurrent manual edits; script changes retain lett
     assert.equal(next.pages[0].letteringNeedsReview,true);assert.equal(next.approved,null);
     s.approve(p.id,4);const exported=await s.export('s');
     assert.match(await readFile(exported.pages[0],'utf8'),/これ、あなたに。/);
+    assert.match(await readFile(exported.pages[0],'utf8'),/data:font\/ttf;base64,/);
+    assert.match(await readFile(join(exported.directory,'FONT-LICENSE.txt'),'utf8'),/SIL OPEN FONT LICENSE Version 1.1/);
     assert.equal(exported.warnings.length,3);
   }finally{await s.close();await rm(root,{recursive:true,force:true});}
 });

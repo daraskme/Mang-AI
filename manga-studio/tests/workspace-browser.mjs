@@ -22,7 +22,7 @@ try{
   await gallery.getByRole('button',{name:/別の作品/}).click();await gallery.locator('.card').click();await gallery.locator('#edit:not([disabled])').click();
   await page.getByText('別の画像・ページを開く前に、編集中の文字やマスクを保存・処理してください。',{exact:true}).waitFor();
   assert.equal(await edit.locator('#text').inputValue(),'まだ保存していない台詞');assert.match(await edit.locator('#title').innerText(),/雨上がり/);
-  await page.locator('[data-view=progress]').click();const progress=page.frameLocator('#progress-frame');await progress.locator('.progress-card').waitFor();assert.equal(await progress.locator('.progress-card').count(),1);
+  await page.locator('[data-view=progress]').click();const progress=page.frameLocator('#progress-frame');await progress.locator('article.progress-card').waitFor();assert.equal(await progress.locator('article.progress-card').count(),1);
   await page.locator('[data-view=editor]').click();assert.equal(await edit.locator('#text').inputValue(),'まだ保存していない台詞');await edit.locator('#save').click();await edit.getByText(/保存しました · revision/).waitFor();
   await page.locator('[data-view=gallery]').click();await gallery.locator('.card').click();await gallery.locator('#edit:not([disabled])').click();await edit.getByRole('heading',{name:'別の作品',exact:true}).waitFor();
   assert.equal(await edit.locator('#text').inputValue(),'');assert.equal(page.context().pages().length,1);

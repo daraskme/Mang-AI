@@ -34,7 +34,7 @@ test('official Python argv is shell-free; GPU jobs serialize, and successful art
   let s=await setup(root,spec=>{
     active++;maxActive=Math.max(active,maxActive);count++;
     assert.equal(spec.argv.length,2);assert(spec.argv[1].endsWith('render_krea.py'));assert.equal(spec.cwd,root);assert.equal(spec.env.OSS_TURBO,join(root,'weights'));
-    const req=JSON.parse(spec.stdio.stdin.data);assert(req.panels.every(p=>p.prompt.includes('no lettering') && p.width%16===0));
+    const req=JSON.parse(spec.stdio.stdin.data);assert(req.panels.every(p=>/no lettering/i.test(p.prompt) && p.width%16===0));
     const done=(async()=>{for(const p of req.panels)await writeFile(p.output,png);active--;return {exitCode:0,signal:null};})();
     return {done,waitForExit:async()=>{},collected:{}};
   });
@@ -42,6 +42,7 @@ test('official Python argv is shell-free; GPU jobs serialize, and successful art
     await assert.rejects(s.render('s',{pageId:'p1'}),/脚本/);
     s.approve(sessionKey('s'),2);
     const job=await s.render('s',{pageId:'p1',seed:123});await s.queue;
+    assert.equal(job.balloonMode,'generated');assert.equal(s.status('s').project.pages[0].panels[0].balloonMode,'generated');
     assert.equal(s.store.getJob(job.id).status,'completed');assert.equal(s.status('s').project.pages[0].panels.filter(p=>p.image).length,3);
     await assert.rejects(s.render('s',{pageId:'p1'}),/全コマ/);
     const before=s.status('s').project.pages[0].panels[0].image;

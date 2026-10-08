@@ -72,6 +72,7 @@ export class Store {
     const saved=JSON.parse(row.body);
     return this.update(id,expectedRevision,p=>{
       for(const key of ['title','brief','characters','style','pages'])p[key]=saved[key];
+      if(saved.production)p.production=saved.production;else delete p.production;
       p.approved=null;
       for(const page of p.pages)page.letteringNeedsReview=page.bubbles.length>0;
     });
@@ -91,7 +92,7 @@ export class Store {
         const fresh=scriptDigest(project)===job.digest;
         if(fresh&&completed.length) this.update(project.id,project.revision,p=>{
           const page=p.pages.find(x=>x.id===job.pageId);
-          for(const output of completed) {const panel=page?.panels.find(x=>x.id===output.id);if(panel)panel.image=output.image;}
+          for(const output of completed) {const panel=page?.panels.find(x=>x.id===output.id);if(panel){panel.image=output.image;panel.balloonMode=output.balloonMode||job.balloonMode||'overlay';if(panel.balloonMode==='generated')page.letteringNeedsReview=true;}}
         });
         const status=!fresh?'superseded':completed.length===job.panels.length?'completed':'interrupted';
         this.saveJob({...job,status,completed:completed.map(x=>x.id),error:status==='interrupted'?'DSH が終了しました。完了済み画像を回収しました。未完了コマは再実行できます。':null});

@@ -3,5 +3,6 @@ node_modules/
 .dsh/
 .test-output/
 studio.config.json
+*.before-resident-models
 local.patch.yml
 *.tgz

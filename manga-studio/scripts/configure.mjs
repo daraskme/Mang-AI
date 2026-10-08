@@ -13,12 +13,12 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
     await writeFile(file,await readFile(resolve(packageRoot,'studio.config.example.json')),{flag:'wx'});
   }
   const config=loadConfig(file);
-  const q=config.qwen;
+  const q=config.agent,coder=config.coder;
   const localized=JSON.parse(await readFile(resolve(packageRoot,'plugins/local-runtime/translations/ja.json'),'utf8').catch(()=> '{}'));
   for(const [ns,meta]of Object.entries(localized))if(ns.startsWith('package:'))await writeFile(resolve(packageRoot,'node_modules/@deepseek-ai',ns.slice(8),'locale/ja.json'),JSON.stringify({meta},null,2)+'\n');
   const schema=yaml.DEFAULT_SCHEMA.extend([new yaml.Type('tag:yaml.org,2002:js',{kind:'scalar',construct:__jsExpr=>({__jsExpr})})]);
   const preset=yaml.load(await readFile(resolve(packageRoot,'node_modules/@deepseek-ai/dsh-web-app/presets/standard.patch.yml'),'utf8'),{schema})[0].insert[0].config;
-  preset.name='Mang-AI · Qwen3.8';
+  preset.name='Mang-AI';
   preset.description='日本語創作・画像・動画・キャプション・学習・検索・コーディング';
   preset.plugins.find(p=>p.id==='persona').config={prefix:'あなたは {{model}} を使う日本語の制作・コーディングエージェントです。',suffix:'作業ディレクトリは {{cwd}} です。'};
   preset.plugins.push({id:'tool-cordis',name:'@deepseek-ai/dsh-tool-cordis'},{id:'tool-plugin-manager',name:'@deepseek-ai/dsh-plugin-manager/tools'});
@@ -46,11 +46,19 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
     {id:'agent-preset-registry',config:{default:'standard',selectedDefault:'standard'}},
     {id:'preset-standard',config:preset},
     {id:'speech-to-text-sensevoice',config:{dataRoot:resolve(packageRoot,'../models/speech')}},
-    {id:'agent-default-model',config:{provider:'manga-qwen',model:q.model}},
-    {id:'llm-pi-ai',config:{providers:{'manga-qwen':{
-      displayName:'Qwen · ローカルエージェント',api:'openai-completions',apiKeyEnv:'MANGA_QWEN_API_KEY',baseURL:q.baseURL,
+    {id:'agent-default-model',config:{provider:'manga-agent',model:q.model}},
+    {id:'llm-pi-ai',config:{providers:{'manga-agent':{
+      displayName:'A1 · 常駐司令塔',api:'openai-completions',apiKeyEnv:'MANGA_AGENT_API_KEY',baseURL:q.baseURL,
       compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},
-      models:[{id:q.model,name:'Qwen3.8 27B Q8 · ローカル',contextWindow:q.contextWindow,maxTokens:Math.min(q.maxTokens,Math.floor(q.contextWindow/8)),input:['text']}],
+      models:[{id:q.model,name:q.model==='agents-a1-4b-q8'?'Agents A1 4B Q8 · 常駐':q.model,contextWindow:q.contextWindow,maxTokens:Math.min(q.maxTokens,Math.floor(q.contextWindow/8)),input:q.vision?['text','image']:['text']}],
+    },'manga-coder':{
+      displayName:coder.displayName||`${coder.model} · コーディング`,api:'openai-completions',apiKeyEnv:'MANGA_CODER_API_KEY',baseURL:coder.baseURL,
+      compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},
+      models:[{id:coder.model,name:coder.displayName||coder.model,contextWindow:coder.contextWindow,maxTokens:coder.maxTokens,input:['text']}],
+    },'manga-qwen':{
+      displayName:'既存セッション互換',api:'openai-completions',apiKeyEnv:'MANGA_AGENT_API_KEY',baseURL:q.baseURL,
+      compat:{supportsDeveloperRole:false,supportsStore:false,maxTokensField:'max_tokens'},
+      models:[{id:q.model,name:q.model,contextWindow:q.contextWindow,maxTokens:Math.min(q.maxTokens,Math.floor(q.contextWindow/8)),input:['text']}],
     }}}},
     {insert:[{id:'manga-studio',name:resolve(packageRoot,'src/plugin.js'),config:{configFile:resolve(file)}},{id:'mang-ai-local-runtime',name:'@mang-ai/local-runtime'}]},
   ];

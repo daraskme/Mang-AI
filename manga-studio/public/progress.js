@@ -7,12 +7,22 @@ import {navigateMedia} from '/navigation.js';
 export function mountProgress(host,{fetchSnapshot,onOpen}) {
   host.classList.add('production-progress');
   const toolbar=el('div',undefined,'progress-toolbar'),heading=el('strong','制作の進捗'),connection=el('span','接続中…','progress-connection'),cards=el('div',undefined,'progress-cards');
-  connection.setAttribute('role','status');toolbar.append(heading,connection);host.append(toolbar,cards);
+  const gpu=el('section',undefined,'progress-card');gpu.hidden=true;gpu.setAttribute('aria-label','GPUとメモリの使用状況');
+  connection.setAttribute('role','status');toolbar.append(heading,connection);host.append(toolbar,gpu,cards);
   let stopped=false,busy=false,timer;
   async function update(){
     if(stopped||busy)return;busy=true;
     try {
       const data=await fetchSnapshot();if(stopped)return;
+      gpu.hidden=!data.gpu?.enabled;
+      if(data.gpu?.enabled){
+        const info=data.gpu,free=info.resources,active=(info.requests||[]).filter(r=>['running','queued','waiting_memory'].includes(r.state));
+        gpu.replaceChildren(el('h3','GPU・メモリ'),el('p',`司令塔：${typeof info.resident==='string'?info.resident:info.resident?.model||'A1'}${info.resident?.status?' · '+info.resident.status:''}`));
+        if(free)gpu.append(el('p',`空きRAM ${free.ramAvailableGiB??'?'} GiB · 空きVRAM ${free.vramFreeGiB??'?'} / ${free.vramTotalGiB??'?'} GiB`));
+        if(info.error||free?.error)gpu.append(el('p',info.error||free.error,'progress-error'));
+        if(!active.length)gpu.append(el('p','大規模処理は待機中です。'));
+        for(const task of active)gpu.append(el('p',`${task.label} · ${{running:'実行中',queued:'順番待ち',waiting_memory:'メモリ待ち'}[task.state]} · ${task.reason}`));
+      }
       const expanded=new Set([...cards.querySelectorAll('details[open]')].map(d=>d.dataset.project));
       const nodes=data.items.map(item=>{
         const card=el('article',undefined,'progress-card');card.dataset.project=item.id;

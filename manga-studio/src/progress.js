@@ -36,6 +36,11 @@ export class WorkflowProgress {
     let entered=0;for(const text of lines){const i=available.indexOf(text);if(i>=0){entered++;available.splice(i,1);}}
     const warning=letteringWarnings(p),exported=phases.export;
     const stages=[
+      ...['settings','pages','prompts'].filter(phase=>p.production||phases[phase]).map(phase=>({
+        id:phase,label:{settings:'設定・背景',pages:'ページ配分',prompts:'作画プロンプト'}[phase],
+        state:phases[phase]&&phases[phase].state!=='completed'?phases[phase].state:phase==='prompts'?(p.production?.pages?.pages.length&&p.production.pages.pages.every(page=>p.production.prompts?.[page.id])?'completed':'pending'):p.production?.[phase]?'completed':'pending',
+        detail:phase==='prompts'?`${Object.keys(p.production?.prompts??{}).length}/${p.production?.pages?.pages.length??0}ページ保存済み`:phase==='settings'?'人物・場所・場面の連続性':`${p.production?.pages?.pages.length??0}ページの配分`,error:phases[phase]?.error,
+      })),
       {id:'script',label:'脚本',state:phases.draft&&phases.draft.state!=='completed'?phases.draft.state:p.approved?'completed':p.pages.length?'review':'pending',detail:p.pages.length?`${p.pages.length}ページ${p.approved?' · 確定済み':' · 確認待ち'}`:'Gemmaの脚本を待っています',error:phases.draft?.error},
       {id:'letter',label:'台詞',state:warning.length?'review':lines.length&&entered===lines.length?'completed':entered?'review':panels.length&&!lines.length?'optional':'pending',detail:`${entered}/${lines.length}本入力 · ${bubbles.filter(b=>b.direction==='vertical').length}個が縦書き`,error:warning.join(' ／ ')},
       {id:'render',label:'作画',state:working?.state||failed?.state||(panels.length&&count===panels.length?'completed':'pending'),detail:working?`${working.pageId} · ${working.completed}/${working.total}コマ生成済み`:`${count}/${panels.length}コマ保存済み`,error:failed?.error},

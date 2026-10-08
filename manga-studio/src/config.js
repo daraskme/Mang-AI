@@ -14,6 +14,9 @@ export function loadConfig(file = process.env.MANGA_STUDIO_CONFIG || resolve(pac
   const base = dirname(resolve(file));
   const absolute = value => isAbsolute(value) ? value : resolve(base, value);
   const c = structuredClone(raw);
+  c.agent={...c.qwen,...c.agent};
+  c.coder={...c.qwen,...c.coder};
+  c.gpu={baseURL:'http://127.0.0.1:1234',enabled:false,...c.gpu};
   c.longvideo={baseURL:'http://127.0.0.1:8190',...c.longvideo};
   c.library=absolute(c.library||'../models/training-library.json');
   c.dataDir = absolute(c.dataDir);
@@ -26,7 +29,7 @@ export function loadConfig(file = process.env.MANGA_STUDIO_CONFIG || resolve(pac
   c.krea.repo = absolute(process.env.KREA2_REPO || c.krea.repo);
   c.krea.python = absolute(process.env.KREA2_PYTHON || c.krea.python);
   c.krea.weights = c.krea.weights ? absolute(c.krea.weights) : process.env[c.krea.checkpoint === 'oss_raw' ? 'OSS_RAW' : 'OSS_TURBO'] || '';
-  for (const role of ['gemma', 'qwen']) {
+  for (const role of ['gemma', 'qwen', 'agent', 'coder']) {
     const prefix = `MANGA_${role.toUpperCase()}`;
     c[role].baseURL = process.env[`${prefix}_URL`] || c[role].baseURL;
     c[role].model = process.env[`${prefix}_MODEL`] || c[role].model;

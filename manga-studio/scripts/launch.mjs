@@ -8,7 +8,10 @@ import { packageRoot } from '../src/config.js';
 
 const require=createRequire(import.meta.url);
 const {patchPath,config}=await configure();
-if(config.qwen.baseURL==='http://127.0.0.1:1234/v1'&&config.qwen.model==='qwen3.8-27b-local'){
+if(config.gpu.enabled){
+  console.log('A1 4B Q8を常駐モデルとしてGPUへ読み込みます。');
+  execFileSync('systemctl',['--user','start','mang-ai-agent.service','mang-ai-models.service'],{stdio:'inherit'});
+}else if(config.qwen.baseURL==='http://127.0.0.1:1234/v1'&&config.qwen.model==='qwen3.8-27b-local'){
   execFileSync('systemctl',['--user','start','mang-ai-models.service'],{stdio:'inherit'});
 }
 const bin=join(dirname(require.resolve('@deepseek-ai/dsh/package.json')),'lib/bin.js');
@@ -23,7 +26,7 @@ if(existsSync('/etc/nixos/flake.nix')){
 }
 const child=spawn(process.execPath,[bin,'--profile','manga',...initialize,'--patch',patchPath,...supplied],{
   cwd:resolve(packageRoot,'..'),stdio:'inherit',
-  env:{...process.env,LD_LIBRARY_PATH:nativeLibraries,DSH_HOME:dshHome,MANGA_QWEN_API_KEY:process.env.MANGA_QWEN_API_KEY || 'local'},
+  env:{...process.env,LD_LIBRARY_PATH:nativeLibraries,DSH_HOME:dshHome,MANGA_QWEN_API_KEY:process.env.MANGA_QWEN_API_KEY || 'local',MANGA_AGENT_API_KEY:process.env.MANGA_AGENT_API_KEY||'local',MANGA_CODER_API_KEY:process.env.MANGA_CODER_API_KEY||'local'},
 });
 for(const event of ['SIGINT','SIGTERM'])process.on(event,()=>child.kill(event));
 child.on('error',error=>{console.error(error.message);process.exitCode=1;});

@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {readdir,readFile,stat,realpath,mkdir,rename,unlink} from 'node:fs/promises';
 import {join,resolve,extname,dirname,relative,sep} from 'node:path';
 import {pageSVG} from './render.js';
+import {embeddedLetteringFont} from './lettering-font.js';
 
 const images=new Set(['.png','.jpg','.jpeg','.webp','.bmp','.avif']),videos=new Set(['.mp4','.webm','.mov','.mkv']);
 const digest=x=>createHash('sha256').update(x).digest('hex').slice(0,32);
@@ -20,6 +21,9 @@ export class MediaGallery {
     }
     const projects=s.store.db.prepare('SELECT id,body FROM projects ORDER BY rowid DESC').all();
     for(const row of projects){const p=JSON.parse(row.body),item={id:'p-'+p.id,group:'projects',title:p.title,subtitle:`${p.pages.length}ページ · 第${p.revision}版`,projectId:p.id,count:p.pages.length,updatedAt:p.updatedAt};this.collections.set(item.id,item);items.push(item);}
+    for(const row of s.store.db.prepare("SELECT id,session,body FROM integrations WHERE kind='video-project' ORDER BY rowid DESC").all()){
+      const p=JSON.parse(row.body),root=s.store.directory(row.session),item={id:'v-'+row.id,group:'videos',title:p.title,subtitle:`${p.mediaIds.length}件の生成・修正版`,sessionKey:row.session,mediaIds:p.mediaIds,root,count:p.mediaIds.length,updatedAt:p.updatedAt};this.collections.set(item.id,item);items.push(item);
+    }
     const sessions=s.store.db.prepare("SELECT DISTINCT session FROM integrations WHERE kind IN ('media','edit-asset')").all();
     for(const {session} of sessions){const project=projects.find(p=>p.id===session),p=project?JSON.parse(project.body):null;const item={id:'s-'+session,group:'sessions',title:p?.title||`セッション ${session.slice(0,8)}`,subtitle:'生成画像・動画・編集履歴',root:s.store.directory(session)};this.collections.set(item.id,item);items.push(item);}
     for(const [id,title,path]of [['krea','Krea 2の生成履歴','../krea2-darask/outputs'],['h3','H3の生成履歴','../minimaxH3-darask/outputs'],['longvideo','長尺動画の生成履歴','../work/longvideo']]){
@@ -46,6 +50,7 @@ export class MediaGallery {
         for(const entry of await readdir(dir,{withFileTypes:true})){
           if(entry.name.startsWith('.')||['exports','requests','metadata','previews'].includes(entry.name))continue;
           const file=join(dir,entry.name);
+          if(c.mediaIds&&!c.mediaIds.some(id=>entry.name.startsWith(id+'.'))&&!entry.isDirectory())continue;
           if(entry.isDirectory()){await visit(file,depth+1);continue;}
           const suffix=extname(entry.name).toLowerCase();if(!images.has(suffix)&&!videos.has(suffix))continue;
           const path=await realpath(file).catch(()=>null);if(!path||!inside(base,path))continue;
@@ -60,7 +65,7 @@ export class MediaGallery {
   }
   get(id){const a=this.assets.get(id);if(!a)throw Error('一覧を更新してメディアを選び直してください');return a;}
   async detail(id){const a=this.get(id);let caption=a.caption||'';if(a.file){const sidecar=a.file.slice(0,-extname(a.file).length)+'.txt',path=await realpath(sidecar).catch(()=>null);if(path&&inside(a.root,path)&&(await stat(path)).size<128000)caption=await readFile(path,'utf8');}const {root,...safe}=a;return {...safe,caption};}
-  async page(asset){const p=this.service.store.get(asset.projectId),page=p.pages.find(x=>x.id===asset.pageId);if(!page)throw Error('ページが更新されました');const images={};for(const panel of page.panels)if(panel.image)images[panel.id]=`data:image/png;base64,${(await this.service.readImage(p.id,panel.image)).toString('base64')}`;return pageSVG(page,images);}
+  async page(asset){const p=this.service.store.get(asset.projectId),page=p.pages.find(x=>x.id===asset.pageId);if(!page)throw Error('ページが更新されました');const images={};for(const panel of page.panels)if(panel.image)images[panel.id]=`data:image/png;base64,${(await this.service.readImage(p.id,panel.image)).toString('base64')}`;return pageSVG(page,images,false,await embeddedLetteringFont());}
   async file(id,thumbnail=false){
     const a=this.get(id);if(a.kind==='page')return {bytes:Buffer.from(await this.page(a)),type:'image/svg+xml'};
     const resolved=await realpath(a.file);if(!inside(a.root,resolved))throw Error('参照先が変更されました');

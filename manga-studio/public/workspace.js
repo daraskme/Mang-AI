@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
 window.addEventListener('hashchange',()=>location.reload());
 const base=`/api/${params.get('project')}/gallery/`,session=params.get('session')||'';
-const frames={gallery:$('gallery-frame'),progress:$('progress-frame'),editor:$('editor-frame')};
+const frames={gallery:$('gallery-frame'),models:$('models-frame'),progress:$('progress-frame'),editor:$('editor-frame')};
 let current=params.get('view')==='progress'?'progress':'gallery';
 const embedded=value=>{const url=new URL(value,location.href),p=new URLSearchParams(url.hash.slice(1));p.set('embedded','1');url.hash=p.toString();return url.href;};
 function screen(name){const p=new URLSearchParams(params);p.delete('view');return `/${name}.html#${p}`;}

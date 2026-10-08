@@ -99,6 +99,66 @@ index b12191f..df82d0c 100644
              "attention_reason": self.attention_reason,
              "attention_fallback_count": getattr(self._attention_processor, "fallback_count", 0),
              "elapsed_seconds": round(elapsed, 3),
+diff --git a/src/krea2_studio/jobs.py b/src/krea2_studio/jobs.py
+index cf823b1..563395a 100644
+--- a/src/krea2_studio/jobs.py
++++ b/src/krea2_studio/jobs.py
+@@ -1,6 +1,10 @@
+ from __future__ import annotations
+ 
+ import copy
++import os
++import sys
++from pathlib import Path
++from contextlib import nullcontext
+ from datetime import datetime, timezone
+ import queue
+ import threading
+@@ -11,6 +15,10 @@ from typing import Any
+ from .config import output_roots, output_url
+ from .engine import GenerationCancelled, KreaEngine
+ 
++# Nix's CUDA shell can replace PYTHONPATH. Resolve the managed bridge explicitly.
++if os.environ.get("MANGAI_GPU_STATE") and os.environ.get("MANGAI_GPU_RUNNER"):
++    sys.path.insert(0, str(Path(os.environ["MANGAI_GPU_RUNNER"]).parent))
++
+ 
+ def _now() -> str:
+     return datetime.now(timezone.utc).isoformat()
+@@ -206,17 +214,27 @@ class JobManager:
+                     "model_load": self.engine.preload,
+                     "loras_load": self.engine.load_loras,
+                 }[operation]
+-                result = execute(
+-                    request,
+-                    lambda value, stage, message: self._update_progress(job_id, value, stage, message),
+-                    cancel_event.is_set,
+-                )
++                managed = bool(os.environ.get("MANGAI_GPU_STATE"))
++                if managed:
++                    from mangai_gpu import GpuLease
++                lease = GpuLease("krea", f"Krea 2 {operation}", cancelled=cancel_event.is_set,
++                    progress=lambda message: self._update_progress(job_id, 0, "waiting_gpu", message)) if managed else nullcontext()
++                with lease:
++                    try:
++                        result = execute(
++                            request,
++                            lambda value, stage, message: self._update_progress(job_id, value, stage, message),
++                            cancel_event.is_set,
++                        )
++                    finally:
++                        if managed:
++                            self.engine.close()
+                 with self._lock:
+                     self.jobs[job_id].update(
+                         status="completed", progress=1.0, stage="completed", message="完了",
+                         result=result, completed_at=_now(),
+                     )
+-            except GenerationCancelled:
++            except (GenerationCancelled, InterruptedError):
+                 with self._lock:
+                     self.jobs[job_id].update(status="cancelled", stage="cancelled", message="キャンセル済み", completed_at=_now())
+             except Exception as exc:
 diff --git a/src/krea2_studio/loaders.py b/src/krea2_studio/loaders.py
 index 616e864..a2bbbc6 100644
 --- a/src/krea2_studio/loaders.py

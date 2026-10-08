@@ -25,7 +25,9 @@ export function engineConfig(input) {
   c.cpuVision=!!c.cpuVision;return c;
 }
 export class Engine {
-  constructor(root) {this.root=root;this.child=null;this.logs=[];this.config={...ENGINE_DEFAULTS};this.key=randomBytes(24).toString('hex');}
+  constructor(root) {this.root=root;this.child=null;this.logs=[];this.config={...ENGINE_DEFAULTS};this.key=randomBytes(24).toString('hex');this.inUse=0;this.lastUsed=Date.now();this.ready=false;
+    this.idleTimer=setInterval(()=>{if(process.env.MANGAI_GPU_STATE&&this.child&&this.ready&&!this.inUse&&Date.now()-this.lastUsed>90000)this.stop();},15000);this.idleTimer.unref();
+  }
   async init() { const stored=JSON.parse(await fs.readFile(path.join(this.root,'engine.json'),'utf8').catch(()=> '{}'));this.config=engineConfig(stored);if(!this.config.binary)this.config.binary=await detectBinary(); }
   headers() {return this.child?{Authorization:'Bearer '+this.key}:{};}
   base() {return `http://127.0.0.1:${this.config.port}`;}
@@ -37,6 +39,7 @@ export class Engine {
       if(r.ok) {health='ready';const m=await fetch(this.base()+'/v1/models',{headers:this.headers(),signal:AbortSignal.timeout(1500)}).then(r=>r.json());model=m.data?.[0]?.id||'';}
       else {health=r.status===503?'loading':'error';error=`HTTP ${r.status}`;}
     }catch(e){error=e.message;}
+    this.ready=health==='ready';if(health==='offline'&&this.child)health='loading';
     return {health,model,managed:!!this.child,config:this.config,logs:this.logs.slice(-60),error};
   }
   async configure(input) {if(this.child)throw new Error('モデルを停止してから接続設定を変更してください');this.config=engineConfig(input);await atomicWrite(path.join(this.root,'engine.json'),JSON.stringify(this.config,null,2));}
@@ -48,7 +51,10 @@ export class Engine {
     const args=['--model',c.model,'--mmproj',c.mmproj,'--host','127.0.0.1','--port',String(c.port),'--ctx-size',String(c.context),'--n-gpu-layers',String(c.gpuLayers),'--parallel','1','--batch-size','512','--ubatch-size','256','--image-max-tokens',String(c.imageTokens),'--jinja','--reasoning-format','deepseek','--api-key',this.key];
     if(c.cpuVision)args.push('--no-mmproj-offload');
     this.logs=[];this.log('Starting llama-server');
-    const child=spawn(c.binary,args,{stdio:['ignore','pipe','pipe'],env:{...process.env,LD_LIBRARY_PATH:['/run/opengl-driver/lib',process.env.LD_LIBRARY_PATH].filter(Boolean).join(':')}});
+    const managed=!!process.env.MANGAI_GPU_STATE;
+    if(managed&&(!process.env.MANGAI_GPU_PYTHON||!process.env.MANGAI_GPU_RUNNER))throw Error('共通GPUキューの実行設定がありません');
+    this.lastUsed=Date.now();this.ready=false;
+    const child=spawn(managed?process.env.MANGAI_GPU_PYTHON:c.binary,managed?[process.env.MANGAI_GPU_RUNNER,'caption','--',c.binary,...args]:args,{stdio:['ignore','pipe','pipe'],env:{...process.env,LD_LIBRARY_PATH:['/run/opengl-driver/lib',process.env.LD_LIBRARY_PATH].filter(Boolean).join(':')}});
     this.child=child;
     child.stdout.on('data',b=>this.log(b.toString()));child.stderr.on('data',b=>this.log(b.toString()));
     child.on('error',e=>{this.log(e.message);if(this.child===child)this.child=null;});
@@ -86,6 +92,8 @@ export class Jobs {
     } finally {this.starting=false;}
   }
   async run(items,settings,job,signal) {
+    this.engine.inUse++;
+    try {
     for(const i of items) {
       if(signal.aborted)break;
       job.current=i.relative;i.status='generating';i.error='';
@@ -106,6 +114,7 @@ export class Jobs {
     }
     job.current='';job.state=signal.aborted?'cancelled':'completed';job.finishedAt=Date.now();
     await this.workspace.serialized(()=>this.workspace.persist());
+    } finally {this.engine.inUse--;this.engine.lastUsed=Date.now();if(process.env.MANGAI_GPU_STATE&&this.engine.child&&!this.engine.inUse)this.engine.stop();}
   }
   stop() {if(this.active()){this.current.state='stopping';this.abort.abort();}}
 }
