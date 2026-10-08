@@ -7,12 +7,14 @@
 ## Google IDプロバイダーとAccess
 
 1. Google Cloudでウェブアプリ用OAuthクライアントを作成します。チームドメインが `YOUR-TEAM.cloudflareaccess.com` なら、JavaScript生成元は `https://YOUR-TEAM.cloudflareaccess.com`、リダイレクトURIは `https://YOUR-TEAM.cloudflareaccess.com/cdn-cgi/access/callback` です。
-2. Cloudflare Zero Trust → Integrations → Identity providers → GoogleへクライアントIDとシークレットを登録し、Testで確認します。Googleがテスト状態なら、自分をテストユーザーへ追加します。
+2. Cloudflare Zero Trust → Integrations → Identity providers → GoogleへクライアントIDとシークレットを登録し、Testで確認します。基本的な本人確認権限（`openid`・`email`・`profile`）だけなら、Googleの公開ステータスはテスト中でも利用できます。
 3. Access → ApplicationsでSelf-hostedアプリを作り、使うホスト名（例 `mangai.example.com`）を登録します。Googleをログイン方法に選択します。
 4. Allowポリシーは使うGoogleアカウントのメールアドレスに限定します。アプリ全体を保護し、パスの空欄はホスト全体を意味します。公開目的でない限り、EveryoneやBypassは使いません。
 5. アプリの **Application Audience (AUD) Tag** を控えます。次の設定ではcloudflared自身もAccessのJWTを検証します。
 
 Google IDプロバイダーの登録と、「誰を許可するか」のAccessポリシーは別の設定です。`cloudflared tunnel login`の証明書にはAccessの作成権限がない場合があります。その場合はダッシュボードで設定し、シークレットや証明書をチャット・Gitへ貼り付けないでください。
+
+個人用ログインではSCIMは無効のままにします。SCIMは組織のユーザー・グループ同期用で、メール取得エラーの解決設定ではありません。基本的な本人確認権限だけの場合、Googleのテストユーザー登録制限と7日間の認可期限には例外があります。ほかのOAuth権限も要求する場合は条件が変わります。[Googleの公開ステータスと例外](https://support.google.com/cloud/answer/15549945?hl=ja)
 
 Google用のPKCEは有効にできます。Testで `User email was not returned` と表示され、IDと名前だけが返る場合は、メール取得権限の要求と同意を確認します。Google Auth Platform → データアクセスで `openid`、`https://www.googleapis.com/auth/userinfo.email`、`https://www.googleapis.com/auth/userinfo.profile` を確認して保存し、再度Testします。メールの共有にも同意してください。改善しない場合はGoogleアカウントの接続管理で、このOAuthアプリの接続だけを解除してから再認証します。スコープ登録だけで認証リクエストや以前の同意が更新されるとは限りません。Gmailの読み取り権限は不要です。[Googleのメール取得仕様](https://developers.google.com/identity/openid-connect/openid-connect#obtaininguserprofileinformation)
 
