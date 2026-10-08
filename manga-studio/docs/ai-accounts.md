@@ -1,0 +1,104 @@
+# AIアカウントとセッション別のコーディング担当
+
+Mang-AIの **プラグイン → AIアカウント** で、ChatGPTログインのCodex、Devin CLIの複数アカウント、DeepSeek APIキーを登録します。Codex / Devinはセッションごとにアカウントとモデルを選択できます。アカウント名は自分で区別するための表示名です。
+
+A1は引き続き指揮役です。コーディングの依頼をセッションで選択した担当へ渡し、結果を取り込みます。入力欄上部の **開く** から担当へ直接依頼することもできます。Codex / Devinの選択は、DSHの主会話モデルを差し替える設定とは別です。DeepSeek APIはDSHのモデル設定から主会話モデルとして選べます。
+
+## 準備
+
+Codex CLIとDevin CLIを公式の手順で導入してください。検証版は **Codex 0.156.0、Devin 3000.10.48、Python 3.12、Node 24.13.0** です。Pythonは3.11以上が必要です。KreaのPythonが存在する場合はそれを使い、それ以外は`python3`を探します。NixOSなどでPATHにない場合は、`studio.config.json`へ導入済みの実行ファイルを指定します。
+
+```json
+{
+  "externalAgents": {
+    "codex": "/absolute/path/to/codex",
+    "devin": "/absolute/path/to/devin",
+    "python": "/absolute/path/to/python3"
+  }
+}
+```
+
+既定では`~/.local/bin/codex`と`~/.local/bin/devin`を優先します。設定の相対パスは設定ファイルの場所が基準です。サーバー設定を変えたら、制作・担当作業・ログインを終えてからMang-AIを再起動してください。
+
+## アカウントを登録する
+
+### Codex：ChatGPTアカウント
+
+1. 種類を **Codex・ChatGPTログイン** にして、区別できる名前で追加します。
+2. **ログイン** を押し、公式ページを開いて表示されたデバイスコードを入力します。
+3. デバイスコード認証が無効なら、ChatGPTのセキュリティ設定で有効にします。サーバーと同じPCでは **このPCのブラウザでログイン** も使えます。後者のlocalhostコールバックは、別端末からの接続には向きません。
+4. ログイン後に **状態・モデル・残量を更新** で、利用できるモデルを確認します。
+
+別のChatGPTアカウントは別の登録枠でログインします。アカウントごとにCLIの保存先を分け、普段使っているCodexのログイン情報を上書きしません。モデル一覧はそのアカウントのCLIから取得し、固定のモデル名を推測して追加しません。
+
+### Devin：Google / GitHub等の公式ログイン
+
+1. 種類を **Devin CLI** にして、たとえば「Devin・Google」「Devin・GitHub」の名前で追加します。
+2. **ログイン → 公式ログインを開く** で認証します。
+3. 公式ページが返すコードを、その登録枠の **Devinのログインコード** へ貼り付け、**コードを送信** を押します。
+4. 「ログイン済み」とモデル一覧を確認します。
+
+公式CLIのPKCEログインを、サーバー側で入力待ちのまま維持します。コードはその開始処理に結び付きます。古い画面のコード、別の登録枠で発行したコード、Mang-AI再起動前のコードは使えません。待機は最大10分です。失敗時は **ログインを中止 → ログイン** で新しく発行してください。コードはチャットの依頼文に入れず、この入力欄へ送ります。
+
+GoogleとGitHubがサービス側で同じDevinユーザーに連携されている場合、登録枠を分けても利用枠は同じです。表示名やログイン方式だけで別契約とは判定しません。
+
+### DeepSeek API
+
+**DeepSeek API → APIキー → キーを保存** で登録します。キーはDSHの認証情報ストアへ保存し、入力欄は直後に消去します。画面・状態取得APIから保存済みの値を読み返す機能はありません。
+
+保存後、DSHのモデル設定からDeepSeekを選択できます。選択した会話内容はDeepSeekへ送信され、API契約に応じて料金が発生します。登録できるDeepSeek APIキーは現在1つです。Codex / Devinの残量表示にDeepSeekの残高は含めません。
+
+## セッションごとの担当とモデル
+
+会話入力欄の上で **アカウント → モデル → 適用** と選びます。別セッションの選択には影響しません。担当未選択なら従来のローカルGLMを利用できます。利用枠が尽きても別アカウントへの自動切り替えは行いません。
+
+**開く** で担当との会話パネルを表示します。作業開始時のアカウント・モデル・作業フォルダーを固定し、途中で選択を変えても実行中の作業を移しません。セッション・アカウント・モデル・作業フォルダーの組ごとに独立したCLI会話を作り、続きの依頼で再利用します。CLIプロセスを再起動したときは保存済み会話IDから再開します。
+
+同じセッションで同時に開始できる担当作業は1件です。別セッションは別のCLI会話として扱いますが、同じ作業フォルダーのファイル編集は衝突し得ます。別々の変更を同時に行う場合はworktree等で作業先を分けてください。
+
+Codexは`workspace-write`と`on-request`を指定します。Devinは通常の`auto`権限モードを使い、dangerous/bypassを指定しません。CLIから届く承認や質問は担当パネルへ表示し、利用者が回答します。A1から承認を代行するツールは提供しません。Devinの権限制御はCLI側の実装に依存し、Codexと同じOSサンドボックスを保証するものではありません。
+
+A1は`coding_agent`の`selection`で選択を確認し、`start`で依頼、`status`で結果を取得、`cancel`で中止します。依頼文と担当が読む作業ファイルは、選択したクラウドサービスへ送信され得ます。主会話全体を自動転送する仕組みではありません。GUI・サーバーの再起動で実行中の担当は中断扱いとなり、完了を推測しません。
+
+## 残り使用量・リセット時刻
+
+制作スペースの **進捗バーの上**、担当パネル、サイドバーに、選択中アカウントの残量を表示します。スマートフォンでは会話入力欄上部の制作進捗の上にも表示します。画面は3秒間隔、サービスへの残量照会は通常60秒以上の間隔で更新します。手動の **状態・モデル・残量を更新** と作業終了時には再照会します。
+
+| サービス | 取得方法 | 表示 |
+|---|---|---|
+| Codex | CLI app-serverの`account/rateLimits/read`、更新通知 | サービスが返す時間枠ごとの残り％・リセット |
+| Devin | CLIが使う公式`GetUserStatus` | 契約に応じた日次・週次の残り％・リセット |
+
+リセットは閲覧端末のタイムゾーンを添えて表示します。取得できない値を0%とは表示せず、**未取得** とします。取得失敗時に前回の値があれば、警告と更新時刻を添えて残します。％はサービスが返す利用枠で、残りトークン数・残り依頼回数への換算はしません。
+
+Devinの取得先は`https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus`です。リダイレクトを許可せず、選択したプロファイルの認証キーだけを送ります。Enterprise等の別サーバーは未対応です。Devin 3000.10.48が使うprotobuf形式を実測しており、安定した公開APIとしての互換性保証はありません。形式・課金方式が変わった場合は未取得として扱い、アダプターを再確認してください。日次枠を隠すMax契約では週次のみ表示します。
+
+**モデルに依頼できても残量APIだけが403になるアカウントがあります。** 実検証では片方の登録アカウントで発生しました。画面に403と未取得を表示し、利用枠の有無を推測しません。認証方式や契約が原因とは断定できず、必要な場合は公式Devinの利用状況画面・サポートで確認してください。
+
+## 保存先
+
+- アカウント、CLI会話、担当履歴：`<dataDir>/external-agents/`。既定は`work/manga/external-agents/`。
+- Codex：登録枠ごとの`CODEX_HOME`。認証ファイルもその配下です。
+- Devin：登録枠ごとのXDG data/config/cache。認証は`data/devin/credentials.toml`です。
+- DeepSeek：DSHが管理する認証情報ストア（通常はローカル`.dsh/`配下）。
+
+アカウントディレクトリは0700、管理用JSONは0600です。CLIの標準エラーや認証コードはアプリログへ転記しません。`external-agents/`と`.dsh/`はGit対象外です。これらのローカルファイルは暗号化保管庫ではないため、バックアップも私的な保存先で扱ってください。
+
+## 検証範囲（2026-10-09）
+
+実DSHのブラウザで、セッション別の担当フレーム切り替え、担当パネルの表示、残量が進捗の上にあること、下書き保持、スマートフォン幅を確認しました。模擬CLIでは、アカウント・モデル固定、承認の所属確認、連続作業、再起動時の中断、APIキー非表示、直接依頼と応答を検査しています。
+
+ネイティブCLIではCodexの独立プロファイル起動を確認しました。DevinはGoogle / GitHubの2つの登録枠でログインを完了し、各セッションから **Claude Opus 5.5 Medium** を指定した短い接続確認に実応答が返りました。ファイル操作を伴うコーディング作業の試験ではありません。片方では公式サーバーから週次残量・リセットを取得し、もう片方では生成成功と残量APIの403を別々に確認しました。新規ChatGPTログインの完了は未検証です。
+
+現行Devin CLIのモデル指定はACPの`session/set_config_option`を使い、返された`currentValue`も照合します。実機で非対応だった旧`session/set_model`を現行版へ送信しません。[ACP Session Config Options](https://agentclientprotocol.com/protocol/v1/session-config-options)
+
+```bash
+# manga-studio/ で実行。実モデルへの依頼は送信しない
+node_modules/node/bin/node --test tests/external-accounts.test.js
+python3 -m unittest discover -s tests -p 'test_devin_usage.py'
+node_modules/node/bin/node tests/accounts-browser.mjs
+node_modules/node/bin/node tests/session-dock-browser.mjs
+node_modules/node/bin/node tests/dsh-smoke.mjs
+```
+
+公式仕様：[Codex app-server](https://developers.openai.com/codex/app-server)、[Codex認証](https://developers.openai.com/codex/auth)、[Devin CLI認証](https://docs.devin.ai/cli/enterprise/devin-auth)、[Devin CLIコマンド](https://docs.devin.ai/cli/reference/commands)、[DeepSeek API](https://api-docs.deepseek.com/)。

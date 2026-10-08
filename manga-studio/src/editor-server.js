@@ -12,6 +12,9 @@ import { postingCopy } from './posting-export.js';
 import {SessionMedia} from './session-media.js';
 
 const staticFiles = {
+  '/accounts.html':['public/accounts.html','text/html; charset=utf-8'],
+  '/accounts.js':['public/accounts.js','text/javascript; charset=utf-8'],
+  '/accounts.css':['public/accounts.css','text/css; charset=utf-8'],
   '/session-media.html':['public/session-media.html','text/html; charset=utf-8'],
   '/session-media.js':['public/session-media.js','text/javascript; charset=utf-8'],
   '/session-media.css':['public/session-media.css','text/css; charset=utf-8'],
@@ -67,7 +70,7 @@ async function jsonBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 /** Loopback-only editor with unguessable, session-scoped bearer capabilities. */
-export async function startEditor(service, port) {
+export async function startEditor(service, port, accounts=null) {
   const secret=randomBytes(32);
   const token=id=>createHmac('sha256',secret).update(id).digest('hex');
   const generationSessions=new Map();
@@ -88,6 +91,28 @@ export async function startEditor(service, port) {
       const url=new URL(req.url,origin);
       if(req.method==='GET' && staticFiles[url.pathname]) {
         const [file,type]=staticFiles[url.pathname];res.setHeader('Content-Type',type);res.end(await readFile(join(packageRoot,file)));return;
+      }
+      if(accounts&&url.pathname.startsWith('/api/accounts/')){
+        const expected=token('accounts'),supplied=(req.headers.authorization||'').replace(/^Bearer /,'');
+        if(Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){send(401,{error:'Mang-AIのアカウント設定から開いてください'});return;}
+        const action=url.pathname.slice('/api/accounts/'.length);
+        if(req.method==='GET'&&action==='state'){send(200,await accounts.snapshot(url.searchParams.get('session'),{refresh:true}));return;}
+        if(req.method!=='POST'){send(405,{error:'POSTで操作してください'});return;}
+        const body=await jsonBody(req);let result;
+        if(action==='add')result=accounts.add(body);
+        else if(action==='refresh')result=await accounts.refresh(body.id,true);
+        else if(action==='login')result=await accounts.login(body.id,body.mode);
+        else if(action==='login-code')result=accounts.submitCode(body.id,body.code);
+        else if(action==='cancel-login')result=await accounts.cancelLogin(body.id);
+        else if(action==='logout')result=await accounts.logout(body.id);
+        else if(action==='rename')result=accounts.rename(body.id,body.label);
+        else if(action==='select')result=accounts.select(body.session,body);
+        else if(action==='deepseek-key')result=await accounts.deepseekKey(body.key);
+        else if(action==='job-start')result=await accounts.jobs.start(body.session,body);
+        else if(action==='job-cancel')result=await accounts.jobs.cancel(body.session,body.jobId);
+        else if(action==='job-respond')result=accounts.jobs.respond(body.session,body);
+        else {send(404,{error:'操作が見つかりません'});return;}
+        send(200,result??{ok:true});return;
       }
       const match=/^\/api\/([a-f0-9]{32})(?:\/(.*))?$/.exec(url.pathname);
       if(!match) {send(404,{error:'見つかりません'});return;}
@@ -244,6 +269,7 @@ export async function startEditor(service, port) {
     mediaUrl: (id,asset)=>`${mountedOrigin?mountedOrigin+'/mang-ai':origin}/media.html#project=${id}&asset=${asset}&token=${token(id)}`,
     generationUrl: (id,session)=>{generationSessions.set(id,session);return `${mountedOrigin?mountedOrigin+'/mang-ai':origin}/generate.html#project=${id}&token=${token(id)}`;},
     galleryUrl,
+    accountsUrl:()=>`${mountedOrigin?mountedOrigin+'/mang-ai':origin}/accounts.html#token=${token('accounts')}`,
     progressUrl:(id,session)=>galleryUrl(id,session).replace('/gallery.html#','/progress.html#'),
     workspaceUrl:(id,session)=>galleryUrl(id,session).replace('/gallery.html#','/workspace.html#'),
     allowFrameOrigin:value=>{const u=new URL(value);if(u.protocol!=='http:'||!['127.0.0.1','localhost'].includes(u.hostname))throw Error('統合画面の接続先はローカルGUIに限ります');frameOrigins.add(u.origin);},

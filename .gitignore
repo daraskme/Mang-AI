@@ -41,6 +41,7 @@ training-runs/
 work/
 **/.test-output/
 **/.dsh/
+**/external-agents/
 **/node_modules/
 **/.venv/
 **/__pycache__/

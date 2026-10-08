@@ -42,7 +42,8 @@ def main():
     }
     for name,argv in commands.items():
         dependency='After=mang-ai-web.service\nWants=mang-ai-web.service\n' if name=='mang-ai-tunnel' else ''
-        text=f'[Unit]\nDescription={name}\n{dependency}\n[Service]\nType=simple\nWorkingDirectory={quote(ROOT/"manga-studio")}\nExecStart={" ".join(quote(a) for a in argv)}\nRestart=on-failure\nRestartSec=5\nUMask=0077\n\n[Install]\nWantedBy=default.target\n'
+        working_directory=str(ROOT/'manga-studio').replace('%','%%')
+        text=f'[Unit]\nDescription={name}\n{dependency}\n[Service]\nType=simple\nWorkingDirectory={working_directory}\nExecStart={" ".join(quote(a) for a in argv)}\nRestart=on-failure\nRestartSec=5\nUMask=0077\n\n[Install]\nWantedBy=default.target\n'
         (directory/(name+'.service')).write_text(text)
     print('Saved private configuration and user services. Existing processes were not stopped.')
     print('Validate: cloudflared tunnel --config '+str(tunnel_config)+' ingress validate')

@@ -7,7 +7,7 @@ const frames={gallery:$('gallery-frame'),generate:$('generate-frame'),models:$('
 const request=async(action,body)=>{const r=await fetch(base+action,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${params.get('token')}`,...body?{'Content-Type':'application/json'}:{}},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(10000)});const result=await r.json();if(!r.ok)throw Error(result.error);return result;};
 let current='gallery';
 const embedded=value=>{const url=new URL(value,location.href),p=new URLSearchParams(url.hash.slice(1));p.set('embedded','1');url.hash=p.toString();return url.href;};
-function screen(name){const p=new URLSearchParams(params);p.delete('view');return `./${name}.html#${p}`;}
+function screen(name){const p=new URLSearchParams(params);p.delete('view');p.delete('accountToken');return `./${name}.html#${p}`;}
 function show(view){
   // Legacy progress links focus the persistent bars without replacing the current view.
   if(view==='progress'){$('workspace-progress').focus();return;}
@@ -50,3 +50,7 @@ window.addEventListener('message',event=>{if(parent!==window&&event.source===par
 show(current);context().catch(e=>$('workspace-status').textContent=e.message);
 mountProgress($('workspace-progress'),{compact:true,fetchSnapshot:()=>request('progress'+(session?'?'+new URLSearchParams({session}):'')),onOpen:async projectId=>openEditor((await request('progress-open',{projectId})).url)});
 if(params.get('view')==='progress')show('progress');
+if(params.get('accountToken')){
+  const quota=$('workspace-quota'),url=new URL('./accounts.html',location.href);url.hash=new URLSearchParams({token:params.get('accountToken'),session,view:'quota',theme:params.get('theme')||'dark',host:location.origin}).toString();quota.src=url.href;quota.hidden=false;
+  window.addEventListener('message',event=>{if(event.source===quota.contentWindow&&event.origin===location.origin&&event.data?.type==='mang-ai:accounts-size')quota.style.height=Math.max(40,Math.min(220,event.data.height||60))+'px';});
+}

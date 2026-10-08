@@ -31,12 +31,13 @@ Gemma の台詞を画像モデルへ転記しません。Krea はコマ単位の
 
 ## 会話・生成物・データの管理
 
+- [AIアカウントとコーディング担当](docs/ai-accounts.md)：Codex / Devinの複数ログイン、セッション別モデル、残量・リセット、DeepSeek APIキー。
 - [セッションとメディア](docs/session-workspace.md)：入力欄の上の生成物、会話で使う参照素材、生成・編集を同じ画面で操作。
 - [生成情報と投稿用コピー](docs/generation-metadata.md)：EXIF等への条件保存、投稿用の情報削除、設定の上の全体％・工程・残り時間。
 - [サムネイル](docs/model-thumbnails.md)：Krea2/H3の実生成例を登録し、変更・解除。
 - [学習データの保存と復元](docs/training-assets.md)：AVIF、非公開HF、公式基本モデルの固定版。
 - [画像収集](docs/dataset-collection.md)：X・Pixiv・Gelbooru・Pawchive、A1の収集ツール。
-- [外部接続](docs/remote-access.md)：Cloudflare Tunnel・Google認証で同じGUIへ接続。
+- [外部接続](docs/remote-access.md)：Cloudflare Tunnel・メールPIN／Google認証で同じGUIへ接続。
 
 ## 検証結果と導入時の注意
 

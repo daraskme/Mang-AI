@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +31,9 @@ export function loadConfig(file = process.env.MANGA_STUDIO_CONFIG || resolve(pac
   if(!Number.isInteger(c.editing.timeoutMs)||c.editing.timeoutMs<1000||c.editing.timeoutMs>2147483647)throw new Error('編集処理の timeoutMs が不正です');
   c.krea.repo = absolute(process.env.KREA2_REPO || c.krea.repo);
   c.krea.python = absolute(process.env.KREA2_PYTHON || c.krea.python);
+  const cli=name=>{const path=resolve(homedir(),'.local/bin',name);return existsSync(path)?path:name;};
+  c.externalAgents={codex:cli('codex'),devin:cli('devin'),python:existsSync(c.krea.python)?c.krea.python:'python3',...c.externalAgents};
+  for(const key of ['codex','devin','python'])if(c.externalAgents[key].includes('/'))c.externalAgents[key]=absolute(c.externalAgents[key]);
   c.krea.weights = c.krea.weights ? absolute(c.krea.weights) : process.env[c.krea.checkpoint === 'oss_raw' ? 'OSS_RAW' : 'OSS_TURBO'] || '';
   for (const role of ['gemma', 'qwen', 'agent', 'coder']) {
     const prefix = `MANGA_${role.toUpperCase()}`;

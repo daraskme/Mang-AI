@@ -11,6 +11,9 @@ import { registerStudioTools } from './studio-tools.js';
 import { registerWorkflowGuides } from './workflow-guides.js';
 import { DatasetCollector, registerDatasetTools } from './dataset-collector.js';
 import { postingCopy } from './posting-export.js';
+import {ExternalAccounts} from './external-accounts.js';
+import {ExternalAgentJobs} from './external-agent-jobs.js';
+import {execFile} from 'node:child_process';
 
 export const name='manga-studio';
 export const inject=['tools','systemPrompt','subprocess'];
@@ -38,10 +41,16 @@ async function lockRoot(root) {
 export async function apply(ctx, options) {
   const config=loadConfig(options.configFile);
   const unlock=await lockRoot(config.dataDir);
-  let service,editor;
-  try {service=new MangaService(config,ctx.subprocess);editor=await startEditor(service,config.editorPort);}
-  catch(error) {if(service) await service.close();await unlock();throw error;}
-  ctx.effect(()=>async()=>{await editor.close();await service.close();await unlock();});
+  let service,editor,accounts,agentJobs;
+  try {
+    accounts=new ExternalAccounts({directory:join(config.dataDir,'external-agents'),...config.externalAgents,loginHelper:join(packageRoot,'python/devin-login.py'),credentials:ctx.get('credentials')});
+    accounts.readDevinUsage=credential=>new Promise((resolve,reject)=>execFile(config.externalAgents.python,[join(packageRoot,'python/devin-usage.py'),credential],{timeout:20000,maxBuffer:65536},(error,stdout)=>{if(error){let status;try{status=JSON.parse(stdout).status;}catch{}reject(Object.assign(Error('Devinの利用枠を取得できませんでした'),{status}));return;}try{resolve(JSON.parse(stdout));}catch{reject(Error('利用枠の形式が不正です'));}}));
+    agentJobs=new ExternalAgentJobs(accounts,{sessionDirectory:id=>ctx.get('sessions')?.get(id)?.header.cwd});accounts.jobs=agentJobs;
+    service=new MangaService(config,ctx.subprocess);editor=await startEditor(service,config.editorPort,accounts);
+  }
+  catch(error) {accounts?.close();if(service) await service.close();await unlock();throw error;}
+  ctx.effect(()=>async()=>{agentJobs.close();accounts.close();await editor.close();await service.close();await unlock();});
+  ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_ACCOUNTS__',value:editor.accountsUrl()}));
   ctx.inject(['webServer'],web=>{editor.allowFrameOrigin(`http://127.0.0.1:${web.webServer.port}`);editor.allowFrameOrigin(`http://localhost:${web.webServer.port}`);web.effect(()=>editor.mount(web.webServer,config.remoteOrigin));});
   const register=(toolName,description,parameters,execute)=>ctx.tools.register(defineTool({
     name:toolName,description,parameters,
@@ -51,6 +60,16 @@ export async function apply(ctx, options) {
     presentResult:(_args,result)=>({card:'generic',title:toolName,content:result.content}),
   }));
   registerWorkflowGuides(register);
+  register('coding_agent','このセッションで利用者が選んだCodexまたはDevinアカウント・モデルへコーディングを依頼する。startで開始し、statusで結果を読む。アカウント・モデルは利用者が画面で選択する。',{
+    action:{type:'string',enum:['selection','start','status','cancel'],required:true},prompt:string('start時：依頼内容と必要な背景。選択したクラウドへ送信される',false),jobId:string('status / cancel時の作業ID',false),
+  },async(a,e)=>{
+    const session=e.agent.id;
+    if(a.action==='selection'){const s=accounts.selection(session);return {selection:s?{...s,provider:accounts.account(s.accountId).provider,label:accounts.account(s.accountId).label}:null};}
+    if(a.action==='start')return {job:await agentJobs.start(session,a),poll:{tool:'coding_agent',action:'status'},note:'開始済みです。statusで完了を確認してください。承認・質問は利用者の担当画面へ表示されます。'};
+    if(a.action==='status')return a.jobId?{job:agentJobs.get(session,a.jobId)}:{jobs:agentJobs.list(session)};
+    return {job:await agentJobs.cancel(session,a.jobId)};
+  });
+  ctx.systemPrompt.section({name:'external-coding-agents',order:20001,interpolate:false,text:'コーディングやモデルへの相談ではcoding_agent(action:selection)で、このセッションに利用者が選んだCodex/Devinの担当を確認する。選択済みならcoding_agent(start)へ依頼と必要な背景を渡し、statusで結果を読み、司令塔として統合する。未選択なら既存ローカル担当を使える。開始済み・承認待ちを完成扱いしない。認証コード・APIキーをツール引数や依頼文に入れない。担当からの承認・質問は利用者がGUIで操作する。'});
   register('media_export_clean','投稿用に生成情報・EXIF・位置情報・コメントを除いたコピーを保存する。元ファイルを保持。画像はPNG、動画は映像・音声を再エンコードせず保存。公開投稿自体はしない。',{
     file:string('ローカルのデータセット・生成画像・動画の絶対パス'),
   },(a,e)=>postingCopy(service.studios,a.file,e.signal));

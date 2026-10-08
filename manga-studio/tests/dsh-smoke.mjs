@@ -37,7 +37,7 @@ const server=createServer(async(req,res)=>{
     assert.equal(input.stream,true);
     assert(input.tools.some(t=>t.function?.name==='manga_letter'));
     assert(input.tools.some(t=>t.function?.name==='media_workflow_guide'));
-    for(const name of ['dataset_sources','dataset_collect','dataset_collection_job','media_model_thumbnail','media_export_clean','media_context'])assert(input.tools.some(t=>t.function?.name===name),`Missing DSH tool: ${name}`);
+    for(const name of ['coding_agent','dataset_sources','dataset_collect','dataset_collection_job','media_model_thumbnail','media_export_clean','media_context'])assert(input.tools.some(t=>t.function?.name===name),`Missing DSH tool: ${name}`);
     assert.equal(input.tools.find(t=>t.function?.name==='manga_render').function.parameters.properties.loras.items.properties.weight.type,'number');
     for(const name of ['krea_generate','h3_generate','media_job','caption_open','caption_generate','caption_save','lora_prepare','lora_run','lora_install','media_open_editor','media_edit','media_edit_status','media_edit_cancel','media_edit_commit'])assert(input.tools.some(t=>t.function?.name===name),`Missing DSH tool: ${name}`);
     const last=input.messages.filter(m=>m.role==='tool').at(-1),value=unpack(last);

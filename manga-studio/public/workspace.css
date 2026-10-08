@@ -33,3 +33,5 @@ nav{flex-wrap:wrap}nav button{padding:6px 9px}
 [data-theme=light] #workspace-progress .progress-card{background:#fff;border-color:#dbe3df}[data-theme=light] #workspace-progress .progress-stage{background:#f0f4f1}
 [data-theme=light] #workspace-progress .progress-stage small,[data-theme=light] #workspace-progress .progress-job small{color:#65756b}
 [data-theme=light] #workspace-progress .progress-card summary{color:#176e4d}[data-theme=light] #workspace-progress [data-state=failed] small,[data-theme=light] #workspace-progress [data-error=true] small,[data-theme=light] #workspace-progress .progress-error,[data-theme=light] #workspace-progress .progress-connection[data-error=true]{color:#a63428}
+
+#workspace-quota{flex:none;width:100%;height:60px;max-height:220px;border:0;border-bottom:1px solid #70809045}

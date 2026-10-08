@@ -9,6 +9,7 @@ A1を指揮役に、ローカルモデルで漫画・画像・動画・コード
 | 画面の使い方・制作機能 | [制作ツールREADME](manga-studio/README.md) |
 | A1とGPUモデルの導入 | [常駐モデルの設定](manga-studio/docs/resident-model-setup.md) |
 | GLMの導入・保持・切替 | [GLMコーディング](manga-studio/docs/glm-coding-session.md) |
+| Codex・Devinの複数アカウント、DeepSeek API | [セッション別の担当・モデル・残量表示](manga-studio/docs/ai-accounts.md) |
 | 262K入力の測定値・制約 | [GLM検証結果](manga-studio/docs/glm-validation-2026-10-09.md) |
 | AVIF・LoRA・学習データの保管と復元 | [保存・再導入手順](manga-studio/docs/training-assets.md) |
 | 画像収集とA1連携 | [X・Pixiv・Gelbooru・Pawchive](manga-studio/docs/dataset-collection.md) |
@@ -36,6 +37,8 @@ flowchart LR
 ```
 
 A1は常駐し、大きなGPU工程はキューで調整します。GLMは必要時に起動し、応答後600秒保持します。別工程が待つと、現在の生成を終えてから解放します。会話はクライアントが送り、A1とGLMのKVキャッシュは共有しません。
+
+Codex / Devinを使う場合は、[AIアカウント設定](manga-studio/docs/ai-accounts.md)で登録し、セッションごとにアカウントとモデルを選びます。A1からの依頼と担当パネルからの直接依頼に対応し、残り使用量・リセット時刻は進捗の上に表示します。DeepSeek APIキーも登録できます。ネイティブCLIの認証情報は登録枠ごとに分離し、Gitへ含めません。
 
 | 役割 | 構成 |
 |---|---|
@@ -115,6 +118,8 @@ python3 scripts/audit-repo.py
 ```
 
 2026-10-09の追加検査ではNode 45件、Python 27件、Caption Studio 15件、H3進捗・ジョブ管理10件と、実DSH＋模擬APIの統合試験が成功。独立したDSHの実ブラウザで会話の参照素材・下書き保持・生成画面・モバイル幅を確認しました。GLM側のPython検査は15件です。これらは実モデル品質の検証を代替しません。小説の表記ルールを変更する場合は追加で`bash scripts/eval.sh`を実行します。
+
+AIアカウント機能追加後はNode 51件、Devin残量解析3件、アカウント画面・実DSH画面のブラウザ試験とDSH統合試験が成功しました。Devinの2つの登録アカウントでOpus 5.5の短い実応答を確認しています。片方の残量APIは403で未取得です。新規Codexログインと実際のコーディング作業はこの確認に含みません。[検証範囲・注意点](manga-studio/docs/ai-accounts.md)
 
 ## 画像・LoRA・データの実施結果
 

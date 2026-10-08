@@ -30,10 +30,18 @@ try{
   // The gallery is part of the default conversation; no launcher click needed.
   const workspace=page.frameLocator('iframe[title="制作スペース"]:visible');await expect(workspace.locator('#workspace-title')).toHaveText('統合画面テスト 0');
   await expect(workspace.locator('#gallery-frame')).toBeVisible();await expect(workspace.locator('#workspace-progress progress').first()).toBeVisible();
+  const accountFrame=page.locator('iframe[title="このセッションのAI担当"]:visible');
+  assert.equal(new URLSearchParams(new URL(await accountFrame.getAttribute('src')).hash.slice(1)).get('session'),sessions[0]);
+  await expect(workspace.frameLocator('#workspace-quota').locator('#quota')).toContainText('Codex / Devin 未選択');
+  const quotaBox=await workspace.locator('#workspace-quota').boundingBox(),progressBox=await workspace.locator('#workspace-progress').boundingBox();assert(quotaBox.y+quotaBox.height<=progressBox.y+1);
+  await page.frameLocator('iframe[title="このセッションのAI担当"]:visible').locator('#open-agent').click();
+  await expect(page.frameLocator('iframe[title="コーディング担当との会話"]:visible').locator('#agent-prompt')).toBeVisible();
+  await page.evaluate(()=>window.__testCtx.sidebarRight.openTab('mang-ai-media'));
   assert(new URL(await page.locator('iframe[title="制作スペース"]:visible').getAttribute('src')).pathname.startsWith('/mang-ai/'));
   await workspace.locator('[data-view=generate]').click();await workspace.frameLocator('#generate-frame').locator('#prompt').fill('生成しないプロンプト');
   await workspace.locator('[data-view=gallery]').click();await workspace.locator('[data-view=generate]').click();assert.equal(await workspace.frameLocator('#generate-frame').locator('#prompt').inputValue(),'生成しないプロンプト');assert.equal(await draft.evaluate(e=>e.value??e.textContent),'送信しない下書き');
   await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[1]);await expect(strip.locator('#reference')).toBeHidden();await expect(workspace.locator('#workspace-title')).toHaveText('統合画面テスト 1');
+  await expect(accountFrame).toHaveAttribute('src',new RegExp('session='+sessions[1]));
   await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[0]);await expect(strip.locator('#reference')).toBeVisible();assert.equal(await draft.evaluate(e=>e.value??e.textContent),'送信しない下書き');
   await workspace.locator('[data-view=gallery]').click();await page.screenshot({path:join(root,'session-dock-desktop.png')});await page.setViewportSize({width:390,height:844});
   await expect(strip.locator('#inline-progress progress').first()).toBeVisible();await draft.click();await expect(draft).toBeFocused();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(root,'session-dock-mobile.png')});
@@ -41,5 +49,8 @@ try{
   // A user-collapsed pane stays collapsed when returning to this session.
   await page.evaluate(()=>window.__testCtx.sidebarRight.toggleExpanded());await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[1]);await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[0]);
   assert.equal(await page.evaluate(()=>window.__testCtx.sidebarRight.isExpanded()),false);assert.equal(await draft.evaluate(e=>e.value??e.textContent),'送信しない下書き');assert.deepEqual(errors,[]);
-  console.log('PASS real DSH: default gallery with persistent bars, explicit references, session isolation, draft preservation, responsive inline progress, collapsed preference');
+  await page.getByRole('button',{name:'プラグイン',exact:true}).click();
+  await page.getByText('AIアカウント',{exact:true}).click();
+  await expect(page.frameLocator('iframe[title="AIアカウント設定"]:visible').locator('#add-account')).toBeVisible();assert.deepEqual(errors,[]);
+  console.log('PASS real DSH: gallery, quota above progress, per-session account frames, coding agent pane, references, draft preservation, responsive progress, collapsed preference');
 }finally{if(browser)await browser.close();child.kill('SIGTERM');await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},5000).unref();});}

@@ -11,7 +11,7 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
     ]});
   }
   function Mark({size=30}){return jsx('span',{style:{fontSize:size,color:'#10b981',lineHeight:1},children:'▣'});}
-  function workspaceURL(){const url=new URL(window.__MANGAI_WORKSPACE__),result=window.__MANGAI_MOUNT__?new URL(window.__MANGAI_MOUNT__+'/workspace.html'+url.hash,location.origin):url;const p=new URLSearchParams(result.hash.slice(1)),color=getComputedStyle(document.body).color.match(/\d+/g);p.set('theme',color&&Number(color[0])>160?'dark':'light');result.hash=p.toString();return result;}
+  function workspaceURL(){const url=new URL(window.__MANGAI_WORKSPACE__),result=window.__MANGAI_MOUNT__?new URL(window.__MANGAI_MOUNT__+'/workspace.html'+url.hash,location.origin):url;const p=new URLSearchParams(result.hash.slice(1)),color=getComputedStyle(document.body).color.match(/\d+/g);p.set('theme',color&&Number(color[0])>160?'dark':'light');if(window.__MANGAI_ACCOUNTS__)p.set('accountToken',new URLSearchParams(new URL(window.__MANGAI_ACCOUNTS__).hash.slice(1)).get('token'));result.hash=p.toString();return result;}
   function WorkspaceFrame({sessionId,view='gallery'}){
     const ref=useRef(null),initial=useRef(null);
     if(!initial.current){const url=workspaceURL();const p=new URLSearchParams(url.hash.slice(1));if(sessionId)p.set('session',sessionId);p.set('view',view);p.set('host',location.origin);url.hash=p.toString();initial.current=url.href;}
@@ -20,6 +20,18 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
     return jsx('iframe',{ref,src:initial.current,title:'制作スペース',onLoad:navigate,style:{border:0,width:'100%',height:'100%',minHeight:0,display:'block'},sandbox:'allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups'});
   }
   function MediaDock({sessionId,useTabInfo}){const {tab}=useTabInfo();return jsx(WorkspaceFrame,{sessionId,view:tab.navigation?.params?.view||'gallery'});}
+  function AccountFrame({view='settings',sessionId}){
+    const ref=useRef(null),[height,setHeight]=useState(view==='quota'?100:view==='session'?92:720);
+    if(!window.__MANGAI_ACCOUNTS__)return null;
+    const url=new URL(window.__MANGAI_ACCOUNTS__);if(window.__MANGAI_MOUNT__){url.protocol=location.protocol;url.host=location.host;url.pathname=window.__MANGAI_MOUNT__+'/accounts.html';}
+    const p=new URLSearchParams(url.hash.slice(1));p.set('view',view);p.set('host',location.origin);if(sessionId)p.set('session',sessionId);const color=getComputedStyle(document.body).color.match(/\d+/g);p.set('theme',color&&Number(color[0])>160?'dark':'light');url.hash=p.toString();
+    useEffect(()=>{const receive=e=>{if(e.source!==ref.current?.contentWindow||e.origin!==url.origin)return;if(e.data?.type==='mang-ai:accounts-size')setHeight(Math.max(38,Math.min(view==='settings'?1200:view==='agent'?720:240,e.data.height||60)));if(e.data?.type==='mang-ai:open-agent'&&e.data.session===sessionId)window.dispatchEvent(new CustomEvent('mang-ai:open-agent',{detail:sessionId}));};window.addEventListener('message',receive);return()=>window.removeEventListener('message',receive);},[view,sessionId]);
+    return jsx('iframe',{key:view+':'+(sessionId||''),ref,src:url.href,title:view==='quota'?'AIの残り使用量':view==='session'?'このセッションのAI担当':view==='agent'?'コーディング担当との会話':'AIアカウント設定',style:{width:'100%',height,border:0,display:'block'},sandbox:'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals'});
+  }
+  function QuotaPanel(){const [session,setSession]=useState(window.__mangaiActiveSession||null);useEffect(()=>{const fn=e=>setSession(e.detail);window.addEventListener('mang-ai:active-session',fn);return()=>window.removeEventListener('mang-ai:active-session',fn);},[]);return jsx(AccountFrame,{view:'quota',sessionId:session});}
+  function AgentDock({sessionId}){return jsx(AccountFrame,{view:'agent',sessionId});}
+  function AgentPanel(){const [session,setSession]=useState(window.__mangaiActiveSession||null);useEffect(()=>{const fn=e=>setSession(e.detail);window.addEventListener('mang-ai:active-session',fn);return()=>window.removeEventListener('mang-ai:active-session',fn);},[]);return jsx(AgentDock,{sessionId:session});}
+  function SessionAccount({session}){const id=session?.sessionId;useEffect(()=>{window.__mangaiActiveSession=id||null;window.dispatchEvent(new CustomEvent('mang-ai:active-session',{detail:id||null}));},[id]);return id?jsx(AccountFrame,{view:'session',sessionId:id}):null;}
   function ConversationMedia({session,onOpen,compact=false}){
     const sessionId=session?.sessionId,ref=useRef(null),[height,setHeight]=useState(38);
     const url=workspaceURL();url.pathname=url.pathname.replace('workspace.html','session-media.html');const p=new URLSearchParams(url.hash.slice(1));p.set('session',sessionId||'');p.set('host',location.origin);if(compact)p.set('overview','1');url.hash=p.toString();
@@ -32,6 +44,11 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
     for(const [ns,dict]of Object.entries(window.__MANGAI_LOCALES__||{}))if(!ns.startsWith('package:'))ctx.effect(()=>ctx.locale.register(ns,'ja',dict));
     document.title='Mang-AI';
     const mediaId='@mang-ai/local-runtime/media';
+    const agentId='@mang-ai/local-runtime/agent';
+    ctx.effect(()=>ctx.sidebarRightTabs.register({id:agentId,kind:'mang-ai-agent',title:()=> 'コーディング担当',keepMounted:true}));
+    ctx.slots.inject('sidebar.right.pane.tab',()=>ctx.slots.register({name:'sidebar.right.pane.tab',key:agentId},AgentDock));
+    ctx.slots.inject('main',()=>ctx.slots.register({name:'main',key:'mang-ai-agent'},()=>jsxs('section',{children:[jsx('button',{onClick:()=>ctx.layout.selectPanel(null),children:'← セッションへ戻る'}),jsx(AgentPanel,{})]})));
+    ctx.effect(()=>{const openAgent=()=>{if(ctx.sidebarRight.mounted.getSnapshot())ctx.sidebarRight.openTab('mang-ai-agent');else ctx.layout.selectPanel('mang-ai-agent');};window.addEventListener('mang-ai:open-agent',openAgent);return()=>window.removeEventListener('mang-ai:open-agent',openAgent);});
     ctx.effect(()=>ctx.sidebarRightTabs.register({id:mediaId,kind:'mang-ai-media',title:()=> '制作スペース',keepMounted:true,guide:[{id:'media',title:()=> 'メディア・制作進捗',description:()=> 'このセッションの漫画・画像・素材を開く',order:5}]}));
     ctx.slots.inject('sidebar.right.pane.tab',()=>ctx.slots.register({name:'sidebar.right.pane.tab',key:mediaId},MediaDock));
     for(const view of ['gallery','progress'])ctx.slots.inject('main',()=>ctx.slots.register({name:'main',key:'mang-ai-'+view},()=>jsxs('section',{style:{display:'flex',flexDirection:'column',height:'100%',minHeight:0},children:[jsx('button',{onClick:()=>ctx.layout.selectPanel(null),style:{alignSelf:'flex-start',padding:'10px'},children:'← セッションへ戻る'}),jsx('div',{style:{flex:1,minHeight:0},children:jsx(WorkspaceFrame,{view})})]})));
@@ -54,9 +71,12 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
         // Do not navigate a restored tab: it may contain unsaved editor work.
         if(!ctx.sidebarRight.tabsIn(id).some(tab=>tab.kind==='mang-ai-media'))open('gallery');
       },[id,mounted,compact]);
-      return jsx(ConversationMedia,{...props,onOpen:open,compact});
+      return jsxs('div',{children:[compact?jsx(AccountFrame,{view:'quota',sessionId:id}):null,jsx(ConversationMedia,{...props,onOpen:open,compact})]});
     }
     ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'mang-ai-session-media',order:10,label:'この会話のメディア',inject:()=>({hooks:{sidebarMounted:ctx.sidebarRight.mounted}})},SessionMedia));
+    ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'mang-ai-session-account',order:9,label:'コーディング担当'},SessionAccount));
+    ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'mang-ai-quota',order:3,label:'AIの残り使用量'},QuotaPanel));
+    ctx.slots.inject('plugins.item',()=>ctx.slots.register({name:'plugins.item',id:'mang-ai-accounts',order:15,label:'AIアカウント'},props=>props.view==='summary'?'Codex・Devinの複数アカウント、DeepSeek APIキーを登録します。':jsx(AccountFrame,{})));
     const button=(view,label)=>jsx('button',{type:'button',onClick:()=>open(view),title:label,style:{display:'inline-flex',padding:'8px',color:'#58b38b',fontSize:'12px',background:'transparent',border:0,cursor:'pointer',maxWidth:'100%',whiteSpace:'nowrap',overflow:'hidden'},children:label});
     ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'mang-ai-gallery',order:5,label:'ギャラリー・進捗'},()=>button('gallery','▧ ギャラリー・進捗')));
     ctx.slots.inject('conversation.session.header.actions',()=>ctx.slots.register({name:'conversation.session.header.actions',id:'mang-ai-media',order:5,label:'メディア'},()=>button('gallery','メディア')));

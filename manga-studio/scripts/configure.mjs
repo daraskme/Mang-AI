@@ -39,7 +39,8 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
   }
   // JSON is valid YAML; avoid code interpolation for deployment values.
   const patch=[
-    ...['llm-deepseek','llm-deepseek-account','deepseek-account','deepseek-llm-api-extensions','session-log-deepseek','plugin-package-inventory-deepseek','web-search-deepseek','ui-settings-account','account-controller','ui-settings-web-search','ui-brand-official','preset-ptc','preset-minimal','preset-cordis'].map(id=>({id,disabled:true})),
+    ...['llm-deepseek-account','deepseek-account','deepseek-llm-api-extensions','session-log-deepseek','plugin-package-inventory-deepseek','web-search-deepseek','ui-settings-account','account-controller','ui-settings-web-search','ui-brand-official','preset-ptc','preset-minimal','preset-cordis'].map(id=>({id,disabled:true})),
+    {id:'llm-deepseek',disabled:false},
     {id:'locale',config:{preference:'ja'}},
     {id:'ui-settings-models',config:{credentialOnboarding:false}},
     {id:'web',config:{searchProvider:'mang-ai-search',fetchProvider:'http'}},
