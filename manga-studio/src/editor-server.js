@@ -119,7 +119,7 @@ export async function startEditor(service, port) {
           res.setHeader('Content-Disposition',`attachment; filename="${output.filename}"`);
           await streamFile(req,res,{path:output.path,type:output.type});return;
         }
-        if(req.method==='GET'&&verb==='progress'){send(200,{items:sessionId?(service.store.find(sessionId)?[service.progress.snapshot(sessionId)]:[]):service.progress.list(),gpu:await service.studios.gpuStatus()});return;}
+        if(req.method==='GET'&&verb==='progress'){const [gpu,media]=await Promise.all([service.studios.gpuStatus(),service.studios.mediaProgress(sessionId)]);send(200,{items:sessionId?(service.store.find(sessionId)?[service.progress.snapshot(sessionId)]:[]):service.progress.list(),gpu,media});return;}
         if(req.method==='GET'&&verb==='workspace'){
           const p=sessionId?service.store.find(sessionId):null;
           if(sessionId)generationSessions.set(sessionId,session);

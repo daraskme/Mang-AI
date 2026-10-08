@@ -3,6 +3,8 @@ const $=id=>document.getElementById(id),hash=new URLSearchParams(location.hash.s
 const project=hash.get('project'),token=hash.get('token'),base=`./api/${project}/gallery/`;
 const session=hash.get('session');let scope=session?'session':'all';
 document.body.classList.toggle('embedded',hash.get('embedded')==='1');
+document.documentElement.dataset.theme=hash.get('theme')==='light'?'light':'dark';
+if(session&&hash.get('embedded')==='1'){document.querySelector('header').hidden=true;$('scope').append($('refresh'));}
 $('scope').hidden=!session;
 let collections=[],group='projects',collection=null,items=[],total=0,selection=-1,loadSerial=0,previewSerial=0,catalogSerial=0,groupChosen=false,refreshing=false;
 const labels={projects:'制作中の漫画',videos:'動画作品',sessions:'セッションのメディア',datasets:'データセット',outputs:'生成環境の履歴'};

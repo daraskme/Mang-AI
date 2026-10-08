@@ -12,11 +12,16 @@ import {writeMediaPrompt} from './creative.js';
 
 const units={krea:'krea2-studio.service',h3:'h3studio.service',caption:'mang-ai-caption.service',longvideo:'mang-ai-longvideo.service'};
 const active=s=>['queued','running','loading','generating','stopping','cancelling'].includes(s);
+const mediaTerminal=s=>['completed','failed','cancelled','canceled'].includes(s);
+function mediaProgress(job){
+  const percent=job.timing?.overall_percent,ratio=typeof percent==='number'?percent/100:job.progress;
+  return {state:job.status||'unknown',ratio:job.status==='completed'?1:typeof ratio==='number'&&Number.isFinite(ratio)?Math.max(0,Math.min(.99,ratio)):null,message:job.message||job.stage||'',error:typeof job.error==='string'?job.error:job.error?.message,updatedAt:new Date().toISOString()};
+}
 
 /** Adapts the user's installed studios without replacing their inference code. */
 export class LocalStudios {
   constructor(config,store,subprocess) {
-    this.config=config;this.store=store;this.subprocess=subprocess;this.tail=Promise.resolve();
+    this.config=config;this.store=store;this.subprocess=subprocess;this.tail=Promise.resolve();this.progressCache=new Map();
     store.db.exec('CREATE TABLE IF NOT EXISTS integrations (id TEXT PRIMARY KEY, session TEXT NOT NULL, kind TEXT NOT NULL, body TEXT NOT NULL)');
     this.models=new ModelLibrary(this);
     this.collectExistingVideos();
@@ -53,6 +58,30 @@ export class LocalStudios {
       const response=await fetch(new URL('/gpu/status',url),{signal:AbortSignal.timeout(7000)});if(!response.ok)throw Error(`HTTP ${response.status}`);
       return {enabled:true,...await response.json()};
     }catch(error){return {enabled:true,error:error.message};}
+  }
+  async mediaProgress(sessionId){
+    // Status GETs only: never start a service, load a model, or download outputs.
+    const rows=this.store.db.prepare("SELECT id,body FROM integrations WHERE kind='media'"+(sessionId?' AND session=?':'')+' ORDER BY rowid DESC LIMIT 12').all(...sessionId?[sessionId]:[]);
+    return Promise.all(rows.map(async row=>{
+      const ref=JSON.parse(row.body);if(!['krea','h3','longvideo'].includes(ref.provider)||typeof ref.remoteId!=='string')return null;
+      let cached=this.progressCache.get(row.id);
+      if(!cached&&ref.lastProgress)cached={value:ref.lastProgress,time:0};
+      if(!cached||!cached.pending&&!mediaTerminal(cached.value?.state)&&Date.now()-cached.time>2000){
+        const previous=cached?.value,entry={time:Date.now(),value:previous};
+        entry.pending=(async()=>{
+          try{
+            const signal=AbortSignal.timeout(3000),job=ref.provider==='longvideo'?await longVideoJob(this,ref,'status',signal):await this.request(ref.provider,`/api/jobs/${encodeURIComponent(ref.remoteId)}`,{signal});
+            entry.value=mediaProgress(job);
+          }catch(error){entry.value={...previous,state:previous?.state||'unknown',ratio:previous?.ratio??null,connectionError:'接続できません。'+(previous?'前回の進捗です。':'')+error.message};}
+          finally{entry.time=Date.now();delete entry.pending;}
+        })();cached=entry;this.progressCache.set(row.id,entry);
+      }
+      if(cached.pending)await cached.pending;
+      return {id:row.id,provider:ref.provider,...cached.value};
+    })).then(items=>{
+      if(this.progressCache.size>256){const keep=new Set(rows.map(row=>row.id));for(const [id,entry] of this.progressCache)if(!keep.has(id)&&!entry.pending)this.progressCache.delete(id);}
+      return items.filter(Boolean);
+    });
   }
   async prompt(session,args,signal){
     const result=await writeMediaPrompt(this.config.gemma,{...args,selection:this.models.selected(session,args.provider)},signal);
@@ -172,7 +201,7 @@ export class LocalStudios {
     const job=await this.request(provider,provider==='krea'?'/api/generate':'/api/jobs',{body,signal});
     const remoteId=job.job_id||job.id;
     if(typeof remoteId!=='string')throw new Error('生成サーバーがジョブIDを返しませんでした');
-    const id=this.save(session,'media',{provider,remoteId,request:body});
+    const id=this.save(session,'media',{provider,remoteId,request:body,lastProgress:mediaProgress(job)});
     if(videoProject)this.attachVideo(session,videoProject.id,id);
     return {id,provider,remoteId,job,...videoProject?{collectionId:videoProject.id}:{}};
   }
@@ -192,6 +221,7 @@ export class LocalStudios {
     const ref=this.owned(session,id,'media');
     if(!['status','cancel'].includes(action))throw new Error('action は status / cancel です');
     const job=ref.provider==='longvideo'?await longVideoJob(this,ref,action,signal):await this.request(ref.provider,`/api/jobs/${encodeURIComponent(ref.remoteId)}${action==='cancel'?'/cancel':''}`,{body:action==='cancel'?{}:undefined,signal});
+    this.progressCache.set(id,{time:Date.now(),value:mediaProgress(job)});
     const url=job.result?.image_url||job.output_url;
     let outputPath;
     if(action==='status' && job.status==='completed' && url) {

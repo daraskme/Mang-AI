@@ -17,7 +17,7 @@ assert(process.env.TEST_URL, 'TEST_URL must contain the current local UI URL; do
 await p.goto(process.env.TEST_URL);
 await p.waitForTimeout(2500);
 const notice=p.getByRole('button',{name:/^(Continue|続行|続ける)$/});if(await notice.count())await notice.click();
-const galleryLink=p.getByRole('button',{name:'▧ ギャラリー',exact:true});await galleryLink.waitFor();
+const galleryLink=p.getByRole('button',{name:'▧ ギャラリー・進捗',exact:true});await galleryLink.waitFor();
 const galleryUrl=await p.evaluate(()=>window.__MANGAI_GALLERY__),galleryHash=new URLSearchParams(new URL(galleryUrl).hash.slice(1));
 const catalog=await fetch(`${new URL(galleryUrl).origin}/api/${galleryHash.get('project')}/gallery/collections`,{headers:{Authorization:`Bearer ${galleryHash.get('token')}`}}).then(r=>{assert.equal(r.status,200);return r.json();});
 console.log('Gallery',JSON.stringify({datasets:catalog.items.filter(c=>c.group==='datasets').length,missing:catalog.items.filter(c=>c.missing).map(c=>({name:c.title,links:c.missing})),projects:catalog.items.filter(c=>c.group==='projects').length}));

@@ -7,7 +7,7 @@ const browser=await chromium.launch({headless:true,args:['--disable-gpu'],execut
 try{
   const page=await browser.newPage({viewport:{width:1700,height:1080}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',async route=>{if(route.request().resourceType()!=='script')return route.continue();const r=await route.fetch();let body=await r.text();if(body.includes('@mang-ai/local-runtime'))body=body.replace('function apply(ctx){','function apply(ctx){window.__testCtx=ctx;').replace("inject:['locale'","inject:['remote.session','locale'");await route.fulfill({response:r,body});});
-  await page.goto(process.env.TEST_URL);await page.getByRole('button',{name:'▧ ギャラリー',exact:true}).waitFor();
+  await page.goto(process.env.TEST_URL);await page.getByRole('button',{name:'▧ ギャラリー・進捗',exact:true}).waitFor();
   const notice=page.getByRole('button',{name:/^(Continue|続行|続ける)$/});if(await notice.count())await notice.click();
   await page.waitForFunction(()=>window.__testCtx?.get('sessions')?.list.getSnapshot().phase==='ready');
   const catalog=await page.evaluate(()=>window.__testCtx.get('remote').session.modelCatalog());
@@ -22,6 +22,6 @@ try{
   const workspace=page.frameLocator('iframe[title="制作スペース"]:visible');await workspace.locator('[data-view=models]').click();
   const models=workspace.frameLocator('#models-frame');await models.locator('.model-card').first().waitFor();const krea=await models.locator('.model-card').count();assert(krea>1);
   await models.locator('#provider').selectOption('h3');await expect(models.locator('#status')).not.toContainText('一覧を読み込んでいます');await models.locator('.model-card').first().waitFor();const h3=await models.locator('.model-card').count();assert(h3>1);
-  await workspace.locator('[data-view=progress]').click();await workspace.frameLocator('#progress-frame').getByLabel('GPUとメモリの使用状況').getByText(/Agents A1 4B/).waitFor();
+  await workspace.getByRole('button',{name:'工程・履歴',exact:true}).click();await workspace.getByLabel('GPUとメモリの使用状況').getByText(/Agents A1 4B/).waitFor();
   await page.screenshot({path:'.test-output/resident-gpu-ui.png'});assert.deepEqual(errors,[]);console.log(JSON.stringify({status:'PASS',kreaCatalogEntries:krea,h3CatalogEntries:h3}));
 }finally{await browser.close();}

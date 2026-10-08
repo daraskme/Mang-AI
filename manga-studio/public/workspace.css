@@ -1,3 +1,35 @@
 :root{color-scheme:dark;font:13px/1.5 system-ui,"Noto Sans CJK JP",sans-serif;background:#11151b;color:#e8edf2}*{box-sizing:border-box}body{margin:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}header{flex:none;padding:12px 14px 8px;border-bottom:1px solid #303945;background:#191f27}strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}nav{display:flex;gap:6px;margin-top:8px}button{font:inherit;padding:7px 12px;border:1px solid #303945;border-radius:6px;background:transparent;color:inherit;cursor:pointer}button[aria-pressed=true]{background:#24352f;color:#93ddb7;border-color:#537564}button:focus-visible{outline:2px solid #93ddb7;outline-offset:2px}#workspace-status{margin:0;color:#efc984}#workspace-status:not(:empty){margin-top:6px}main{flex:1;min-height:0;position:relative}iframe{border:0;width:100%;height:100%;display:block;background:#11151b}[hidden]{display:none!important}#editor-empty{padding:24px;color:#9ba9b9}
 
 nav{flex-wrap:wrap}nav button{padding:6px 9px}
+#workspace-progress{flex:none;max-height:38%;overflow:auto;padding:6px 14px 10px;border-bottom:1px solid #303945;background:#191f27;color:#e8edf2;scrollbar-width:thin}
+#workspace-progress:focus-visible{outline:2px solid #93ddb7;outline-offset:-2px}
+#workspace-progress .progress-toolbar{padding:0 0 5px;gap:8px;flex-wrap:wrap}
+#workspace-progress .progress-toolbar strong{font-size:12px}
+#workspace-progress .progress-connection{color:#9ba9b9;font-size:10px;flex:1;text-align:right}
+#workspace-progress .progress-connection[data-error=true],#workspace-progress .progress-error{color:#ffaba0}
+#workspace-progress button{padding:3px 7px;background:transparent;border-color:#43534c;color:#b9dccb;font-size:11px}
+#workspace-progress .progress-overview{display:grid;gap:7px;max-height:115px;overflow:auto}
+#workspace-progress .progress-overview-label{display:flex;gap:8px;justify-content:space-between;align-items:baseline;font-size:12px}
+#workspace-progress .progress-overview-label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+#workspace-progress .progress-overview-label small{color:#a9b9c9;font-size:11px;text-align:right;max-width:70%;overflow-wrap:anywhere}
+#workspace-progress progress{display:block;width:100%;height:7px;accent-color:#6ed3a4}
+#workspace-progress [data-state=failed] progress,#workspace-progress [data-state=interrupted] progress{accent-color:#ed9b80}
+#workspace-progress [data-state=failed] small,#workspace-progress [data-state=interrupted] small{color:#ffaba0}
+#workspace-progress [data-error=true] small{color:#ffaba0}
+#workspace-progress .progress-details{margin-top:10px}
+#workspace-progress .progress-card{background:#141a21;border-color:#39434f;padding:10px;margin-bottom:8px}
+#workspace-progress .progress-card h3{font-size:13px}
+#workspace-progress .progress-stages{grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin:8px 0}
+#workspace-progress .progress-stage{background:#242c36;padding:8px}
+#workspace-progress .progress-stage small,#workspace-progress .progress-job small{color:#bac4d0}
+#workspace-progress .progress-card summary{color:#93ddb7}
+#workspace-progress .progress-job{border-color:#303945}
+@media(max-height:500px){header{padding:5px 10px}header strong{font-size:12px}nav{margin-top:4px}nav button{padding:3px 7px}#workspace-progress{padding:4px 10px 6px;max-height:30%}#workspace-progress .progress-connection{display:none}#workspace-progress .progress-overview-label small{max-width:65%}}
+:root[data-theme=light]{color-scheme:light;background:#fff;color:#27362f}
+[data-theme=light] header,[data-theme=light] #workspace-progress{background:#f8faf9;border-color:#dbe3df;color:#27362f}
+[data-theme=light] button{border-color:#dbe3df}[data-theme=light] button[aria-pressed=true]{background:#e9f4ee;border-color:#b2cbbd;color:#176e4d}
+[data-theme=light] iframe{background:#fff}[data-theme=light] #workspace-progress .progress-connection,[data-theme=light] #workspace-progress .progress-overview-label small{color:#65756b}
+[data-theme=light] #workspace-progress button{border-color:#b2cbbd;color:#176e4d}
+[data-theme=light] #workspace-progress .progress-card{background:#fff;border-color:#dbe3df}[data-theme=light] #workspace-progress .progress-stage{background:#f0f4f1}
+[data-theme=light] #workspace-progress .progress-stage small,[data-theme=light] #workspace-progress .progress-job small{color:#65756b}
+[data-theme=light] #workspace-progress .progress-card summary{color:#176e4d}[data-theme=light] #workspace-progress [data-state=failed] small,[data-theme=light] #workspace-progress [data-error=true] small,[data-theme=light] #workspace-progress .progress-error,[data-theme=light] #workspace-progress .progress-connection[data-error=true]{color:#a63428}

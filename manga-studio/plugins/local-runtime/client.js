@@ -20,12 +20,12 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
     return jsx('iframe',{ref,src:initial.current,title:'制作スペース',onLoad:navigate,style:{border:0,width:'100%',height:'100%',minHeight:0,display:'block'},sandbox:'allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups'});
   }
   function MediaDock({sessionId,useTabInfo}){const {tab}=useTabInfo();return jsx(WorkspaceFrame,{sessionId,view:tab.navigation?.params?.view||'gallery'});}
-  function ConversationMedia({session,onOpen}){
+  function ConversationMedia({session,onOpen,compact=false}){
     const sessionId=session?.sessionId,ref=useRef(null),[height,setHeight]=useState(38);
-    const url=workspaceURL();url.pathname=url.pathname.replace('workspace.html','session-media.html');const p=new URLSearchParams(url.hash.slice(1));p.set('session',sessionId||'');p.set('host',location.origin);url.hash=p.toString();
-    useEffect(()=>{setHeight(38);const receive=event=>{if(event.source!==ref.current?.contentWindow||event.origin!==url.origin||event.data?.session!==sessionId)return;if(event.data.type==='mang-ai:strip-size')setHeight(Math.max(36,Math.min(150,Number(event.data.height)||36)));if(event.data.type==='mang-ai:open-media')onOpen('gallery');};window.addEventListener('message',receive);return()=>window.removeEventListener('message',receive);},[sessionId]);
+    const url=workspaceURL();url.pathname=url.pathname.replace('workspace.html','session-media.html');const p=new URLSearchParams(url.hash.slice(1));p.set('session',sessionId||'');p.set('host',location.origin);if(compact)p.set('overview','1');url.hash=p.toString();
+    useEffect(()=>{setHeight(38);const receive=event=>{if(event.source!==ref.current?.contentWindow||event.origin!==url.origin||event.data?.session!==sessionId)return;if(event.data.type==='mang-ai:strip-size')setHeight(Math.max(36,Math.min(compact?250:150,Number(event.data.height)||36)));if(event.data.type==='mang-ai:open-media')onOpen('gallery');};window.addEventListener('message',receive);return()=>window.removeEventListener('message',receive);},[sessionId,compact]);
     if(!sessionId)return null;
-    return jsx('iframe',{key:sessionId,ref,src:url.href,title:'この会話のメディア',allow:'clipboard-write',style:{border:0,width:'100%',height,display:'block'},sandbox:'allow-scripts allow-same-origin'});
+    return jsx('iframe',{key:sessionId+':'+compact,ref,src:url.href,title:'この会話のメディア',allow:'clipboard-write',style:{border:0,width:'100%',height,display:'block'},sandbox:'allow-scripts allow-same-origin'});
   }
   function apply(ctx){
     ctx.effect(()=>ctx.locale.addLanguage({id:'ja',label:'日本語',fallback:'en'}));
@@ -36,10 +36,29 @@ window.__ModuleLoader__.load({id:'@mang-ai/local-runtime',factory:require=>{
     ctx.slots.inject('sidebar.right.pane.tab',()=>ctx.slots.register({name:'sidebar.right.pane.tab',key:mediaId},MediaDock));
     for(const view of ['gallery','progress'])ctx.slots.inject('main',()=>ctx.slots.register({name:'main',key:'mang-ai-'+view},()=>jsxs('section',{style:{display:'flex',flexDirection:'column',height:'100%',minHeight:0},children:[jsx('button',{onClick:()=>ctx.layout.selectPanel(null),style:{alignSelf:'flex-start',padding:'10px'},children:'← セッションへ戻る'}),jsx('div',{style:{flex:1,minHeight:0},children:jsx(WorkspaceFrame,{view})})]})));
     const open=view=>{if(ctx.sidebarRight.mounted.getSnapshot())ctx.sidebarRight.openTab('mang-ai-media',{params:{view}});else ctx.layout.selectPanel('mang-ai-'+view);};
-    ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'mang-ai-session-media',order:10,label:'この会話のメディア'},props=>jsx(ConversationMedia,{...props,onOpen:open})));
-    const button=(view,label)=>jsx('button',{type:'button',onClick:()=>open(view),title:label,style:{display:'inline-flex',padding:'8px',color:'#93ddb7',fontSize:'12px',background:'transparent',border:0,cursor:'pointer'},children:label});
-    ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'mang-ai-progress',order:4,label:'制作の進捗'},()=>button('progress','◷ 制作の進捗')));
-    ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'mang-ai-gallery',order:5,label:'メディアギャラリー'},()=>button('gallery','▧ ギャラリー')));
+    const opened=new Set(),responsiveCollapsed=new Set();
+    function SessionMedia(props){
+      const id=props.session?.sessionId,mounted=props.useSidebarMounted(value=>value===id);
+      const [compact,setCompact]=useState(()=>matchMedia('(max-width: 1023px)').matches);
+      useEffect(()=>{const query=matchMedia('(max-width: 1023px)'),change=()=>setCompact(query.matches);query.addEventListener('change',change);return()=>query.removeEventListener('change',change);},[]);
+      useEffect(()=>{
+        if(!id||!mounted)return;
+        if(compact){
+          // The host makes a narrow right pane fullscreen. Keep the conversation
+          // visible, with its media and progress inline; retain the editor iframe.
+          if(ctx.sidebarRight.isExpanded()&&ctx.sidebarRight.active()?.kind==='mang-ai-media'){ctx.sidebarRight.toggleExpanded();responsiveCollapsed.add(id);}
+          return;
+        }
+        if(responsiveCollapsed.delete(id)){if(!ctx.sidebarRight.isExpanded())ctx.sidebarRight.toggleExpanded();return;}
+        if(opened.has(id))return;opened.add(id);
+        // Do not navigate a restored tab: it may contain unsaved editor work.
+        if(!ctx.sidebarRight.tabsIn(id).some(tab=>tab.kind==='mang-ai-media'))open('gallery');
+      },[id,mounted,compact]);
+      return jsx(ConversationMedia,{...props,onOpen:open,compact});
+    }
+    ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'mang-ai-session-media',order:10,label:'この会話のメディア',inject:()=>({hooks:{sidebarMounted:ctx.sidebarRight.mounted}})},SessionMedia));
+    const button=(view,label)=>jsx('button',{type:'button',onClick:()=>open(view),title:label,style:{display:'inline-flex',padding:'8px',color:'#58b38b',fontSize:'12px',background:'transparent',border:0,cursor:'pointer',maxWidth:'100%',whiteSpace:'nowrap',overflow:'hidden'},children:label});
+    ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'mang-ai-gallery',order:5,label:'ギャラリー・進捗'},()=>button('gallery','▧ ギャラリー・進捗')));
     ctx.slots.inject('conversation.session.header.actions',()=>ctx.slots.register({name:'conversation.session.header.actions',id:'mang-ai-media',order:5,label:'メディア'},()=>button('gallery','メディア')));
     ctx.slots.inject('sidebar.brand.mark',()=>ctx.slots.register({name:'sidebar.brand.mark'},Mark));
     ctx.slots.inject('sidebar.brand.name',()=>ctx.slots.register({name:'sidebar.brand.name'},()=>jsx('strong',{children:'Mang-AI'})));

@@ -1,3 +1,4 @@
+import {mountProgress} from './progress.js';
 const $=id=>document.getElementById(id),p=new URLSearchParams(location.hash.slice(1)),session=p.get('session'),token=p.get('token'),base=`./api/${p.get('project')}/gallery/`,host=p.get('host');
 document.documentElement.dataset.theme=p.get('theme')==='light'?'light':'dark';
 let signature='',busy=false,reference=null;
@@ -16,4 +17,5 @@ async function refresh(){
     $('reference').hidden=!value.reference;$('reference-label').textContent=value.reference?'会話の参照素材: '+value.reference.name:'';resize();
   }catch(e){$('state').textContent='メディアの再接続を待っています';resize();}finally{busy=false;}
 }
+if(p.get('overview')==='1'&&session){$('inline-progress').hidden=false;mountProgress($('inline-progress'),{compact:true,fetchSnapshot:()=>api('progress?'+new URLSearchParams({session}))});}
 new ResizeObserver(resize).observe(document.body);document.addEventListener('visibilitychange',refresh);setInterval(refresh,4000);refresh();

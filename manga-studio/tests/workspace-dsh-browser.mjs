@@ -11,7 +11,7 @@ try{
     if(route.request().resourceType()!=='script')return route.continue();
     const r=await route.fetch();let body=await r.text();if(body.includes('@mang-ai/local-runtime'))body=body.replace('function apply(ctx){','function apply(ctx){window.__testCtx=ctx;');await route.fulfill({response:r,body});
   });
-  await page.goto(process.env.TEST_URL);await page.getByRole('button',{name:'▧ ギャラリー',exact:true}).waitFor();
+  await page.goto(process.env.TEST_URL);await page.getByRole('button',{name:'▧ ギャラリー・進捗',exact:true}).waitFor();
   const notice=page.getByRole('button',{name:/^(Continue|続行|続ける)$/});if(await notice.count())await notice.click();
   await page.waitForFunction(()=>window.__testCtx?.get('sessions')?.list.getSnapshot().phase==='ready');
   const sessions=await page.evaluate(()=>{const s=window.__testCtx.get('sessions').list.getSnapshot();return s.ids.map(id=>({id,blank:s.byId[id].blank,running:s.byId[id].running}));});
@@ -26,10 +26,10 @@ try{
   const edit=shell.frameLocator('#editor-frame');await edit.getByRole('heading',{name:'雨上がりの忘れ物',exact:true}).waitFor();
   await expect(edit.locator('#productionProgress [data-stage="export"]')).toHaveAttribute('data-state','completed');
   const option=await edit.locator('#selection option').nth(1).getAttribute('value');await edit.locator('#selection').selectOption(option);const original=await edit.locator('#text').inputValue();await edit.locator('#text').fill('統合画面の未保存テスト');
-  await page.getByRole('button',{name:'◷ 制作の進捗',exact:true}).click();await expect(shell.locator('[data-view=progress]')).toHaveAttribute('aria-pressed','true');
+  await expect(shell.locator('#workspace-progress')).toBeVisible();await shell.getByRole('button',{name:'工程・履歴',exact:true}).click();
   await shell.locator('[data-view=editor]').click();assert.equal(await edit.locator('#text').inputValue(),'統合画面の未保存テスト');
   const other=sessions.find(s=>s.id!==selected&&!s.running);
-  if(other){await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),other.id);await page.getByRole('button',{name:'▧ ギャラリー',exact:true}).click();await expect(page.locator('iframe[title="制作スペース"]:visible')).toHaveAttribute('src',new RegExp(other.id));await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),selected);assert.equal(await edit.locator('#text').inputValue(),'統合画面の未保存テスト');}
+  if(other){await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),other.id);await page.getByRole('button',{name:'▧ ギャラリー・進捗',exact:true}).click();await expect(page.locator('iframe[title="制作スペース"]:visible')).toHaveAttribute('src',new RegExp(other.id));await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),selected);assert.equal(await edit.locator('#text').inputValue(),'統合画面の未保存テスト');}
   await edit.locator('#text').fill(original);await shell.locator('[data-view=gallery]').click();await mkdir('.test-output',{recursive:true});await page.screenshot({path:'.test-output/unified-dsh-desktop.png'});
   assert.equal(page.context().pages().length,1);assert.deepEqual(errors,[]);
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.test-output/unified-dsh-mobile.png'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
