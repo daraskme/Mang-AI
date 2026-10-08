@@ -56,7 +56,7 @@ DSH は空きポートで起動し、URL を表示します。自動でブラウ
 
 ### A1 / Gemma / Qwen
 
-GLM-5.3 Flashは実機検証後、利用者の指示でモデルと専用エンジンを削除しました。[測定結果・未検証項目・再現手順](docs/glm-flash-validation.md) を保存しています。事前検査は削除後の環境を未準備として扱い、自動で再取得・起動しません。
+GLM-5.3 Flashの旧llama.cpp環境は削除済みですが、その後の依頼でprivateのカスタムStrataを導入し、OrcaRouter Uncensored Q4_K_Mへ切り替えています。[現行の起動・検証記録](docs/glm-custom-strata.md) を参照してください。通常のcoderはQwenのままで、GLMは専用APIの1243番ポートへ接続して使います。[旧環境の検証記録](docs/glm-flash-validation.md) と専用検査は履歴として保存し、自動で旧モデルを再取得・起動しません。
 
 LM Studio や llama.cpp などで各モデルを OpenAI Chat Completions 互換 API として起動し、`agent`（司令塔）、`gemma`（創作）、`coder`（コーディング）の `baseURL` / `model` を実際の値にします。既定URLは `http://127.0.0.1:1234/v1`。modelには **`GET /v1/models` が返すid** を指定します。`qwen` は旧構成の互換設定です。管理下のGPU切替を使う場合は [常駐モデルの導入手順](docs/resident-model-setup.md) に従います。
 

@@ -6,7 +6,7 @@
 
 詳しい操作・モデル構成・検証方法は [制作ツールの説明](manga-studio/README.md)、ソースの復元は [統合環境の説明](integrations/README.md) を参照してください。以下は同梱する小説執筆環境の説明です。
 
-GLM-5.3 Flashは、新しい依頼に基づき [privateのカスタムStrata](https://github.com/daraskme/Strata-GLM) で再導入しています。[今回の起動・検証記録](manga-studio/docs/glm-custom-strata.md) と、削除済み旧llama.cpp環境の [過去の検証記録](manga-studio/docs/glm-flash-validation.md) を分けて保存します。
+GLM-5.3 Flashは、新しい依頼に基づき [privateのカスタムStrata](https://github.com/daraskme/Strata-GLM) で再導入し、OrcaRouter UncensoredのQ4_K_Mを使用します。[今回の起動・検証記録](manga-studio/docs/glm-custom-strata.md) と、削除済み旧llama.cpp環境の [過去の検証記録](manga-studio/docs/glm-flash-validation.md) を分けて保存します。
 
 ## 長編小説執筆環境
 
