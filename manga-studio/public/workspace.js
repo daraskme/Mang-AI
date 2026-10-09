@@ -1,7 +1,6 @@
 import "./frame-theme.js";
 import {mountProgress} from './progress.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
-document.documentElement.dataset.theme=params.get('theme')==='light'?'light':'dark';
 window.addEventListener('hashchange',()=>location.reload());
 const base=`./api/${params.get('project')}/gallery/`,session=params.get('session')||'';
 const frames={gallery:$('gallery-frame'),generate:$('generate-frame'),models:$('models-frame'),editor:$('editor-frame')};

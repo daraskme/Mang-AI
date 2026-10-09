@@ -2,6 +2,7 @@ const labels={pending:'未着手',optional:'任意',review:'確認・更新待�
 const el=(tag,text,className)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;};
 function duration(job){const start=Date.parse(job.startedAt),end=job.finishedAt?Date.parse(job.finishedAt):Date.now();if(!Number.isFinite(start)||!Number.isFinite(end))return '';const sec=Math.max(0,Math.floor((end-start)/1000));return `${Math.floor(sec/60)}分${sec%60}秒`+(job.finishedAt?'':'経過');}
 
+import "./frame-theme.js";
 import {navigateMedia} from './navigation.js';
 
 const activeStates=new Set(['running','queued','waiting_memory']);

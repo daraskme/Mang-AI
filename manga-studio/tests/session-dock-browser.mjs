@@ -17,8 +17,9 @@ let log='';child.stdout.on('data',chunk=>log+=chunk);child.stderr.on('data',chun
 try{
   const deadline=Date.now()+60000;while(!/dsh web: (http\S+)/.test(log)){assert(child.exitCode===null,'DSH startup failed: '+log.replace(/token=[^\s&]+/g,'token=REDACTED'));assert(Date.now()<deadline,'DSH startup timed out');await new Promise(r=>setTimeout(r,200));}
   const url=log.match(/dsh web: (http\S+)/)[1];browser=await chromium.launch({headless:true,args:['--disable-gpu'],executablePath:process.env.CHROME_PATH||'/nix/store/i068vcjr9d1dk0ahikjpwgsncxbsslsf-google-chrome-153.0.8010.52/share/google/chrome/chrome'});
-  const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const context=await browser.newContext({viewport:{width:1600,height:1000}}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',async route=>{if(route.request().resourceType()!=='script')return route.continue();const r=await route.fetch();let body=await r.text();if(body.includes('@mang-ai/local-runtime'))body=body.replace('function apply(ctx){','function apply(ctx){window.__testCtx=ctx;');await route.fulfill({response:r,body});});
+  await page.route('**/gallery/models?*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({items:[{key:'test-model',id:'test-model',name:'検証用モデル',kind:'model',available:true},{key:'test-lora',id:'test-lora',name:'検証用LoRA',kind:'lora',available:true}],selection:null})}));
   await page.goto(url);const notice=page.getByRole('button',{name:/^(Continue|続行|続ける)$/});await page.waitForTimeout(1500);if(await notice.count())await notice.click();
   await page.waitForFunction(()=>window.__testCtx?.get('sessions')?.list.getSnapshot().phase==='ready');
   const sessions=await page.evaluate(async path=>{const ctx=window.__testCtx,workspace=await ctx.get('workspaces').create({path}),ids=[];for(let i=0;i<2;i++)ids.push(await ctx.get('sessions').create({workspaceId:workspace.workspaceId}));return ids;},root);
@@ -46,11 +47,42 @@ try{
   await expect(accountFrame).toHaveAttribute('src',new RegExp('session='+sessions[1]));
   await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[0]);await expect(strip.locator('#reference')).toBeVisible();assert.equal(await draft.evaluate(e=>e.value??e.textContent),'送信しない下書き');
   await workspace.locator('[data-view=gallery]').click();await workspace.frameLocator('#gallery-frame').locator('#group-picker').selectOption('projects');
-  await page.evaluate(()=>{document.body.style.color='rgb(230, 235, 240)';});await expect(workspace.frameLocator('#gallery-frame').locator('html')).toHaveAttribute('data-theme','dark');
-  await workspace.locator('[data-view=generate]').click();assert.equal(await workspace.frameLocator('#generate-frame').locator('#prompt').inputValue(),'生成しないプロンプト');await expect(workspace.frameLocator('#generate-frame').locator('html')).toHaveAttribute('data-theme','dark');
-  await page.evaluate(()=>{document.body.style.removeProperty('color');});await expect(workspace.frameLocator('#generate-frame').locator('html')).toHaveAttribute('data-theme','light');await workspace.locator('[data-view=gallery]').click();
+  // Exercise the real persisted Harness preference, not a synthetic body color.
+  const themeButton=page.locator('#mang-ai-theme-toggle');await expect(themeButton).toBeVisible();
+  const buttonBox=await themeButton.boundingBox();assert(buttonBox.x<280&&buttonBox.y>800,'Theme control belongs at the bottom left');
+  await workspace.locator('[data-view=models]').click();const models=workspace.frameLocator('#models-frame');
+  await models.getByRole('checkbox').check();await models.getByRole('spinbutton').fill('0.6');
+  await workspace.locator('[data-view=editor]').click();const edit=workspace.frameLocator('#editor-frame');
+  await edit.locator('#selection').selectOption(bubble.id);await edit.locator('#text').fill('テーマ切替でも残す台詞');
+  const svg=await edit.locator('#canvas').innerHTML();
+  const sourceUrls=await workspace.locator('main>iframe').evaluateAll(frames=>frames.map(frame=>frame.src));
+  for(const theme of ['dark','light']){
+    await page.getByRole('button',{name:theme==='dark'?'ダークモードに切り替え':'ライトモードに切り替え',exact:true}).click();
+    await expect(page.locator('html')).toHaveAttribute('data-ds-theme-source',theme);
+    for(const id of ['gallery','generate','models','editor'])await expect(workspace.frameLocator('#'+id+'-frame').locator('html')).toHaveAttribute('data-theme',theme);
+    const palette=await page.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,color:getComputedStyle(document.body).color,radius:getComputedStyle(document.body).getPropertyValue('--dsw-radius-md').trim()}));
+    await workspace.locator('[data-view=generate]').click();
+    await expect(workspace.frameLocator('#generate-frame').locator('body')).toHaveCSS('background-color',palette.background);
+    await expect(workspace.frameLocator('#generate-frame').locator('body')).toHaveCSS('color',palette.color);
+    await expect(workspace.frameLocator('#generate-frame').locator('#submit')).toHaveCSS('border-radius',palette.radius);
+    assert.equal(await workspace.frameLocator('#generate-frame').locator('#prompt').inputValue(),'生成しないプロンプト');
+    await workspace.frameLocator('#generate-frame').locator('body').evaluate(()=>scrollTo(0,0));await page.screenshot({path:join(root,'theme-generate-'+theme+'.png')});
+    await workspace.locator('[data-view=models]').click();await expect(models.locator('body')).toHaveCSS('background-color',palette.background);assert.equal(await models.getByRole('spinbutton').inputValue(),'0.6');
+    await page.screenshot({path:join(root,'theme-models-'+theme+'.png')});
+    await workspace.locator('[data-view=editor]').click();await expect(edit.locator('.inspector')).toHaveCSS('background-color',palette.background);await expect(edit.locator('.paper')).toHaveCSS('background-color','rgb(255, 255, 255)');await expect(edit.locator('.progress-card').first()).toHaveCSS('color',palette.color);if(theme==='dark')await expect(edit.locator('.progress-card').first()).not.toHaveCSS('background-color','rgb(255, 255, 255)');
+    assert.equal(await edit.locator('#text').inputValue(),'テーマ切替でも残す台詞');assert.equal(await edit.locator('#canvas').innerHTML(),svg);assert.deepEqual(await workspace.locator('main>iframe').evaluateAll(frames=>frames.map(frame=>frame.src)),sourceUrls);
+    await edit.locator('body').evaluate(()=>scrollTo(0,0));await page.screenshot({path:join(root,'theme-editor-'+theme+'.png')});
+    assert.equal(await draft.evaluate(e=>e.value??e.textContent),'送信しない下書き');
+  }
+  // Host Settings changes must also update the footer and mounted frames.
+  await page.evaluate(()=>window.__testCtx.theme.setTheme('dark'));await expect(themeButton).toHaveAttribute('aria-pressed','true');await expect(edit.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.waitForTimeout(800);
+  const freshContext=await browser.newContext(),fresh=await freshContext.newPage();await fresh.goto(url);await expect(fresh.locator('html')).toHaveAttribute('data-ds-theme-source','dark');await fresh.reload();await expect(fresh.locator('html')).toHaveAttribute('data-ds-theme-source','dark');await freshContext.close();
+  const standalone=await page.context().newPage();await standalone.goto(await workspace.locator('#generate-frame').getAttribute('src'));await expect(standalone.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.getByRole('button',{name:'ライトモードに切り替え',exact:true}).click();await expect(standalone.locator('html')).toHaveAttribute('data-theme','light');await standalone.close();
+  await workspace.locator('[data-view=gallery]').click();
   await page.screenshot({path:join(root,'session-dock-desktop.png')});await page.setViewportSize({width:390,height:844});
-  await expect(strip.locator('#inline-progress progress').first()).toBeVisible();await draft.click();await expect(draft).toBeFocused();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await expect.poll(async()=>{const box=await accountFrame.boundingBox();return box.x>=0&&box.x+box.width<=390;}).toBe(true);await page.screenshot({path:join(root,'session-dock-mobile.png')});
+  await expect(strip.locator('#inline-progress progress').first()).toBeVisible();await draft.click();await expect(draft).toBeFocused();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await expect.poll(async()=>{const box=await accountFrame.boundingBox();return box.x>=0&&box.x+box.width<=390;}).toBe(true);await expect(themeButton).toHaveText('');assert((await themeButton.boundingBox()).height<=40);await page.screenshot({path:join(root,'session-dock-mobile.png')});
   await page.setViewportSize({width:1600,height:1000});await expect(workspace.locator('#workspace-title')).toHaveText('統合画面テスト 0');await workspace.locator('[data-view=generate]').click();assert.equal(await workspace.frameLocator('#generate-frame').locator('#prompt').inputValue(),'生成しないプロンプト');
   // A user-collapsed pane stays collapsed when returning to this session.
   await page.evaluate(()=>window.__testCtx.sidebarRight.toggleExpanded());await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[1]);await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[0]);

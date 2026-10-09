@@ -1,21 +1,170 @@
-:root{--ui-bg:#11151b;--ui-panel:#191f27;--ui-line:#303945;--ui-text:#e8edf2;--ui-muted:#a4b2c2;--ui-accent:#93ddb7}
-:root[data-theme=light]{color-scheme:light;--ui-bg:#fff;--ui-panel:#f6f8f7;--ui-line:#dbe3df;--ui-text:#27362f;--ui-muted:#65756b;--ui-accent:#176e4d}
-:root[data-theme=dark]{color-scheme:dark}
-body.embedded{background:var(--ui-bg);color:var(--ui-text)}
-body.embedded[data-screen=generate],body.embedded[data-screen=models]{max-width:none;margin:0;padding:12px;font-size:13px}
-body.embedded[data-screen=generate]>h1,body.embedded[data-screen=generate]>p:first-of-type,body.embedded[data-screen=models]>header{display:none}
-body.embedded[data-screen=generate] main{gap:18px}body.embedded[data-screen=generate] main>section{padding:0;border:0;border-radius:0;background:transparent}
-body.embedded[data-screen=generate] label{margin-top:12px}body.embedded[data-screen=generate] textarea{min-height:150px}body.embedded[data-screen=generate] #generation-progress{padding:10px;margin-bottom:12px;background:var(--ui-panel);border-color:var(--ui-line)}
-body.embedded[data-screen=generate] #generation-detail,body.embedded[data-screen=generate] #generation-eta,body.embedded[data-screen=generate] #status,body.embedded[data-screen=models] #status{color:var(--ui-accent)}
-body.embedded[data-screen=generate] #status{background:var(--ui-panel);border-color:var(--ui-line)}
-body.embedded[data-screen=generate] :is(input,select,textarea,button),body.embedded[data-screen=models] :is(input,select,button){background:var(--ui-panel);color:var(--ui-text);border-color:var(--ui-line)}
-body.embedded[data-screen=generate] small,body.embedded[data-screen=models] .model-card small{color:var(--ui-muted)}
-body.embedded[data-screen=models] .model-card{background:var(--ui-panel);border-color:var(--ui-line)}body.embedded[data-screen=models] .model-card[data-selected=true]{border-color:var(--ui-accent);box-shadow:none}body.embedded[data-screen=models] .picture{background:var(--ui-bg);color:var(--ui-muted)}
-body.embedded[data-screen=models] #cards{grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px}body.embedded[data-screen=models] .toolbar{gap:8px}body.embedded[data-screen=models] #status:empty{display:none}
-body.embedded .topbar{padding:8px 12px;min-height:48px;height:auto;background:var(--ui-panel);border-color:var(--ui-line)}body.embedded .topbar .brand,body.embedded .topbar .local-dot{display:none}body.embedded .top-actions{flex-wrap:wrap;width:100%;gap:6px}
-body.embedded[data-screen=index],body.embedded[data-screen=media]{--panel:var(--ui-panel);--paper:var(--ui-panel);--line:var(--ui-line);--muted:var(--ui-muted);color:var(--ui-text)}
-body.embedded[data-screen=index] :is(.sidebar,.inspector,.canvas-toolbar,.footer-bar),body.embedded[data-screen=media] .media-inspector{background:var(--ui-panel);color:var(--ui-text);border-color:var(--ui-line)}
-body.embedded[data-screen=index] :is(input,select,textarea,button),body.embedded[data-screen=media] :is(input,select,textarea,button){color:var(--ui-text);background:var(--ui-panel);border-color:var(--ui-line)}
-body.embedded[data-screen=index] :is(label,.section-label,.eyebrow),body.embedded[data-screen=media] :is(label,small,.eyebrow){color:var(--ui-muted)}
-body.embedded[data-screen=media] .media-main{padding:14px}body.embedded[data-screen=media] .media-heading{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}body.embedded[data-screen=media] .media-heading .eyebrow{display:none}body.embedded[data-screen=media] .media-heading h1{font-size:16px;margin:4px 0}body.embedded[data-screen=media] #status{background:var(--ui-panel)}
-@media(max-width:520px){body.embedded[data-screen=generate] .row{gap:8px}body.embedded[data-screen=generate] main>section+section{padding-top:14px;border-top:1px solid var(--ui-line)}body.embedded :is(button,input,select){scroll-margin:12px}}
+/* Standalone defaults match Harness; embedded views receive its resolved tokens. */
+:root.mang-ai-ui {
+  color-scheme: light;
+  --ui-bg:#fff; --ui-panel:#f9fafb; --ui-raised:#f1f2f3; --ui-sidebar:#f9fafb;
+  --ui-line:#00000024; --ui-text:#17171b; --ui-muted:#62666d; --ui-dimmed:#858a93;
+  --ui-accent:#4176e6; --ui-hover:#00000008; --ui-selected:#0000000c;
+  --ui-primary:#17171b; --ui-primary-hover:#353638; --ui-on-primary:#fff; --ui-danger:#c73535;
+  --ui-radius:12px; --ui-radius-sm:8px; --ui-font:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --bg:var(--ui-bg); --panel:var(--ui-panel); --paper:var(--ui-panel); --line:var(--ui-line);
+  --text:var(--ui-text); --muted:var(--ui-muted); --accent:var(--ui-accent); --green:var(--ui-primary);
+  background:var(--ui-bg); color:var(--ui-text); font:14px/1.6 var(--ui-font);
+}
+:root.mang-ai-ui[data-theme=dark] {
+  color-scheme:dark;
+  --ui-bg:#151517; --ui-panel:#232324; --ui-raised:#2c2c2e; --ui-sidebar:#1b1b1c;
+  --ui-line:#ffffff29; --ui-text:#f9fafb; --ui-muted:#cfd3d6; --ui-dimmed:#9ba0a6;
+  --ui-accent:#7aaaff; --ui-hover:#ffffff14; --ui-selected:#ffffff1a;
+  --ui-primary:#f9fafb; --ui-primary-hover:#e8e9eb; --ui-on-primary:#151517; --ui-danger:#f25a5a;
+}
+.mang-ai-ui body {background:var(--ui-bg);color:var(--ui-text);font-family:var(--ui-font);font-size:14px;line-height:1.6}
+.mang-ai-ui :is(button,input,select,textarea) {font:inherit;box-sizing:border-box;border:1px solid var(--ui-line);border-radius:var(--ui-radius-sm);color:var(--ui-text);background:transparent;accent-color:var(--ui-accent)}
+.mang-ai-ui :is(button,input:not([type=checkbox]):not([type=range]),select) {min-height:36px;padding:6px 12px}
+.mang-ai-ui textarea {background:var(--ui-bg);padding:10px 12px;line-height:1.7;resize:vertical}
+.mang-ai-ui select option {color:var(--ui-text);background:var(--ui-panel)}
+.mang-ai-ui input::placeholder,.mang-ai-ui textarea::placeholder {color:var(--ui-dimmed);opacity:1}
+.mang-ai-ui button {cursor:pointer;border-radius:var(--ui-radius);line-height:22px;font-size:13px;font-weight:400}
+.mang-ai-ui button:hover:not(:disabled) {background:var(--ui-hover);border-color:var(--ui-line);color:var(--ui-text)}
+.mang-ai-ui button:disabled {cursor:not-allowed;opacity:.4}
+.mang-ai-ui :is(button,input,textarea,select,a,summary):focus-visible {outline:2px solid var(--ui-accent);outline-offset:2px}
+.mang-ai-ui :is(label,.muted,.eyebrow,.section-label,small) {color:var(--ui-muted);letter-spacing:normal}
+.mang-ai-ui label {font-size:12px;font-weight:400}
+.mang-ai-ui a {color:var(--ui-accent)}
+.mang-ai-ui :is(h1,h2,h3,strong) {color:inherit}
+.mang-ai-ui h1 {font-size:20px;font-weight:600;line-height:1.5}
+.mang-ai-ui h2 {font-size:16px;font-weight:600;letter-spacing:normal}
+.mang-ai-ui h3 {font-size:14px;font-weight:600}
+.mang-ai-ui :is(.accent,.save-button,button.primary),.mang-ai-ui [data-screen=generate] #submit,.mang-ai-ui [data-screen=models] #save {background:var(--ui-primary);border-color:var(--ui-primary);color:var(--ui-on-primary);font-weight:500}
+.mang-ai-ui :is(.accent,.save-button,button.primary):hover:not(:disabled),.mang-ai-ui [data-screen=generate] #submit:hover:not(:disabled),.mang-ai-ui [data-screen=models] #save:hover:not(:disabled) {background:var(--ui-primary-hover);color:var(--ui-on-primary)}
+.mang-ai-ui :is(.danger,.error,.warning,#assignment-alert) {color:var(--ui-danger)}
+.mang-ai-ui progress {accent-color:var(--ui-accent)}
+.mang-ai-ui dialog {color:var(--ui-text);background:var(--ui-panel);border:1px solid var(--ui-line);border-radius:16px;box-shadow:0 12px 50px #0003}
+.mang-ai-ui dialog p {color:var(--ui-muted)}
+.mang-ai-ui dialog::backdrop {background:#0008;backdrop-filter:blur(3px)}
+
+/* Generation: one form hierarchy, with the session result beside or below it. */
+.mang-ai-ui [data-screen=generate] {max-width:1200px;margin:auto;padding:24px}
+.mang-ai-ui [data-screen=generate] main {display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:24px}
+.mang-ai-ui [data-screen=generate] section {min-width:0;padding:20px;border:1px solid var(--ui-line);border-radius:var(--ui-radius);background:var(--ui-bg)}
+.mang-ai-ui [data-screen=generate] section>h2 {margin:0 0 16px}
+.mang-ai-ui [data-screen=generate] label {display:block;margin:16px 0 6px}
+.mang-ai-ui [data-screen=generate] :is(input,select,textarea) {width:100%;margin:0}
+.mang-ai-ui [data-screen=generate] select[multiple] {min-height:108px}
+.mang-ai-ui [data-screen=generate] textarea {min-height:180px}
+.mang-ai-ui [data-screen=generate] .row {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.mang-ai-ui [data-screen=generate] .button-row {display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.mang-ai-ui [data-screen=generate] .button-row button {flex:initial}
+.mang-ai-ui [data-screen=generate] button {margin:8px 6px 4px 0;white-space:normal}
+.mang-ai-ui [data-screen=generate] .button-row button {margin:0}
+.mang-ai-ui [data-screen=generate] #generation-progress {margin:0 0 16px;padding:14px;background:var(--ui-panel)}
+.mang-ai-ui [data-screen=generate] #generation-bar {width:100%;margin:8px 0}
+.mang-ai-ui [data-screen=generate] #generation-eta {color:var(--ui-muted)}
+.mang-ai-ui [data-screen=generate] #status {padding:10px 12px;border:1px solid var(--ui-line);background:var(--ui-panel);color:var(--ui-text);font-size:13px;border-radius:var(--ui-radius-sm)}
+.mang-ai-ui [data-screen=generate] #status:empty {display:none}
+.mang-ai-ui [data-screen=generate] pre {white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 var(--ui-font);padding:14px;background:var(--ui-panel);border-radius:var(--ui-radius-sm);max-height:340px;overflow:auto}
+.mang-ai-ui [data-screen=generate] #history button {display:block;width:100%;text-align:left;margin-right:0}
+.mang-ai-ui [data-screen=generate] #output {overflow-wrap:anywhere}
+
+/* Model catalog: the same neutral surfaces, labels, controls and selected state. */
+.mang-ai-ui [data-screen=models] {padding:24px}
+.mang-ai-ui [data-screen=models] header p {color:var(--ui-muted);max-width:75ch}
+.mang-ai-ui [data-screen=models] .toolbar {display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin-bottom:14px}
+.mang-ai-ui [data-screen=models] .toolbar label {min-width:140px}
+.mang-ai-ui [data-screen=models] #search {width:100%;min-width:0}
+.mang-ai-ui [data-screen=models] #status {color:var(--ui-muted);font-size:13px}
+.mang-ai-ui [data-screen=models] #status:empty,.mang-ai-ui [data-screen=models] #selection:empty {display:none}
+.mang-ai-ui [data-screen=models] #selection {padding:10px 12px;border-radius:var(--ui-radius-sm);background:var(--ui-panel);font-size:13px}
+.mang-ai-ui [data-screen=models] .model-card {padding:12px;border:1px solid var(--ui-line);border-radius:var(--ui-radius);background:var(--ui-bg)}
+.mang-ai-ui [data-screen=models] .model-card[data-selected=true] {border-color:var(--ui-accent);box-shadow:0 0 0 1px var(--ui-accent)}
+.mang-ai-ui [data-screen=models] .picture {background:var(--ui-panel);color:var(--ui-muted);border-radius:var(--ui-radius-sm)}
+.mang-ai-ui [data-screen=models] .model-card small {color:var(--ui-muted);font-size:11px}
+.mang-ai-ui [data-screen=models] .model-card .fields {align-items:end}
+
+/* Editors: only the chrome changes. The drawing canvas and export stay white. */
+.mang-ai-ui .topbar {background:var(--ui-bg);border-color:var(--ui-line);height:auto;min-height:56px;padding:10px 18px;gap:12px;flex-wrap:wrap}
+.mang-ai-ui .brand {font:600 17px var(--ui-font);letter-spacing:0;color:var(--ui-text)}
+.mang-ai-ui .brand :is(span,small),.mang-ai-ui .local-dot {color:var(--ui-muted)}
+.mang-ai-ui .top-actions {gap:8px;flex-wrap:wrap}
+.mang-ai-ui [data-screen=index] :is(.sidebar,.inspector,.canvas-toolbar,.footer-bar) {background:var(--ui-bg);border-color:var(--ui-line);color:var(--ui-text)}
+.mang-ai-ui [data-screen=index] .sidebar,.mang-ai-ui .media-inspector {background:var(--ui-sidebar)}
+.mang-ai-ui [data-screen=index] :is(.sidebar,.inspector) {padding:18px}
+.mang-ai-ui [data-screen=index] .sidebar-bottom {color:var(--ui-muted);border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=index] .sidebar-bottom b {color:var(--ui-text)}
+.mang-ai-ui [data-screen=index] .page-button.active {background:var(--ui-selected);border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=index] :is(.page-number,#pageCount) {background:var(--ui-panel);color:var(--ui-text)}
+.mang-ai-ui [data-screen=index] .canvas-toolbar {padding:14px 18px;min-height:70px}
+.mang-ai-ui [data-screen=index] .canvas-area {background:radial-gradient(var(--ui-line) .65px,transparent .65px) 0 0/12px 12px,var(--ui-panel);padding:20px}
+.mang-ai-ui [data-screen=index] .paper {background:white;box-shadow:0 3px 20px #0002}
+.mang-ai-ui [data-screen=index] .canvas-caption,.mang-ai-ui [data-screen=index] .jobs,.mang-ai-ui [data-screen=index] .dialogue small {color:var(--ui-muted)}
+.mang-ai-ui [data-screen=index] .dialogue {border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=index] .inspector-heading h2 {font-size:16px}
+.mang-ai-ui [data-screen=index] :is(input,select,textarea) {background:var(--ui-bg);font-size:13px}
+.mang-ai-ui [data-screen=index] .footer-bar #status {background:transparent;padding:0;color:var(--ui-muted)}
+.mang-ai-ui [data-screen=media] .media-inspector {border-color:var(--ui-line);padding:20px}
+.mang-ai-ui [data-screen=media] .media-inspector small {color:var(--ui-muted)}
+.mang-ai-ui [data-screen=media] .media-main {padding:20px;min-width:0}
+.mang-ai-ui [data-screen=media] .media-heading {display:flex;gap:8px 14px;align-items:baseline;flex-wrap:wrap}
+.mang-ai-ui [data-screen=media] .media-heading h1 {font-size:18px;margin:0 0 14px}
+.mang-ai-ui [data-screen=media] .media-stage {background:var(--ui-panel);border:1px solid var(--ui-line);border-radius:var(--ui-radius)}
+.mang-ai-ui [data-screen=media] #status {background:var(--ui-panel);color:var(--ui-text);font-size:13px;border-radius:var(--ui-radius-sm)}
+.mang-ai-ui [data-screen=media] .edit-section {border-color:var(--ui-line)}
+
+/* Shared session chrome, so neighboring frames never retain the old green skin. */
+.mang-ai-ui .production-progress {font-family:var(--ui-font);color:var(--ui-text)}
+.mang-ai-ui .production-progress :is(.progress-card,.progress-stage) {background:var(--ui-panel);border-color:var(--ui-line)}
+.mang-ai-ui .production-progress .progress-stage {background:var(--ui-raised)}
+.mang-ai-ui .production-progress :is(.progress-connection,.progress-stage small,.progress-job small) {color:var(--ui-muted)}
+.mang-ai-ui .production-progress :is(button,summary) {background:transparent;color:var(--ui-text);border-color:var(--ui-line)}
+.mang-ai-ui .production-progress .progress-job {border-color:var(--ui-line)}
+.mang-ai-ui body .production-progress .progress-badge {background:var(--ui-selected);color:var(--ui-text)}
+.mang-ai-ui body .production-progress :is([data-state=running],[data-state=queued]) .progress-badge {background:color-mix(in srgb,var(--ui-accent) 18%,transparent);color:var(--ui-accent)}
+.mang-ai-ui body .production-progress :is([data-state=failed],[data-state=interrupted]) .progress-badge,.mang-ai-ui .production-progress .progress-error {color:var(--ui-danger)}
+.mang-ai-ui .production-progress progress {accent-color:var(--ui-accent)}
+.mang-ai-ui [data-screen=workspace] :is(header,#workspace-progress,iframe) {background:var(--ui-bg);color:var(--ui-text);border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=workspace] #workspace-progress :is(.progress-card,.progress-stage) {background:var(--ui-panel);border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=workspace] #workspace-progress :is(.progress-overview-label span,.progress-connection,.progress-stage small,.progress-job small) {color:var(--ui-muted)}
+.mang-ai-ui [data-screen=workspace] #workspace-progress .progress-overview-label small {color:var(--ui-text)}
+.mang-ai-ui [data-screen=workspace] #workspace-progress :is(button,summary) {color:var(--ui-text);border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=workspace] #workspace-progress :is([data-state=failed],[data-error=true]) small {color:var(--ui-danger)}
+.mang-ai-ui [data-screen=workspace] #workspace-progress progress {accent-color:var(--ui-accent)}
+.mang-ai-ui [data-screen=gallery] aside {background:var(--ui-sidebar)}
+.mang-ai-ui [data-screen=gallery] :is(nav button[aria-pressed=true],#collections button.selected,#scope button[aria-pressed=true]),.mang-ai-ui [data-screen=workspace] button[aria-pressed=true] {background:var(--ui-selected);border-color:var(--ui-line);color:var(--ui-text)}
+.mang-ai-ui [data-screen=gallery] .thumbnail {background:var(--ui-panel)}
+.mang-ai-ui [data-screen=gallery] .card {padding:0}
+.mang-ai-ui [data-screen=gallery] .badge {color:white;background:#202124dd}
+.mang-ai-ui [data-screen=session-media] :is(#open,#reference) {color:var(--ui-accent)}
+.mang-ai-ui [data-screen=session-media] #recent button {border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=session-media] #inline-progress progress {accent-color:var(--ui-accent)}
+.mang-ai-ui [data-screen=accounts] :is(section,.account,#assignment-settings) {border-color:var(--ui-line)}
+.mang-ai-ui [data-screen=accounts] :is(.assignment-heading button,select,input,textarea) {background:var(--ui-bg)}
+.mang-ai-ui [data-screen=accounts].session,.mang-ai-ui [data-screen=accounts].compact {background:transparent}
+
+/* Only outer decoration is removed when a screen lives inside the workspace. */
+.mang-ai-ui body.embedded[data-screen=generate],.mang-ai-ui body.embedded[data-screen=models] {max-width:none;padding:16px;margin:0}
+.mang-ai-ui body.embedded[data-screen=generate]>h1,.mang-ai-ui body.embedded[data-screen=generate]>p:first-of-type,.mang-ai-ui body.embedded[data-screen=models]>header {display:none}
+.mang-ai-ui body.embedded .topbar .brand,.mang-ai-ui body.embedded .topbar .local-dot,.mang-ai-ui body.embedded .media-heading>.eyebrow {display:none}
+.mang-ai-ui body.embedded .topbar {padding:8px 12px;min-height:52px}
+.mang-ai-ui body.embedded .top-actions {width:100%}
+.mang-ai-ui body.embedded[data-screen=generate] section {padding:16px}
+@media(max-width:850px) {
+  .mang-ai-ui [data-screen=generate] main {grid-template-columns:1fr;gap:16px}
+  .mang-ai-ui [data-screen=generate],.mang-ai-ui [data-screen=models] {padding:16px}
+  .mang-ai-ui [data-screen=index] .workspace {height:auto}
+  .mang-ai-ui [data-screen=index] .sidebar {padding:10px 14px}
+  .mang-ai-ui [data-screen=index] #pages {gap:6px}
+  .mang-ai-ui [data-screen=index] .page-button {padding:6px;min-width:60px;width:auto;margin:0}
+  .mang-ai-ui [data-screen=index] .page-number {width:28px;height:36px;font-size:13px}
+  .mang-ai-ui [data-screen=index] .main {min-height:340px}
+  .mang-ai-ui [data-screen=index] .canvas-area {max-height:520px;padding:14px}
+  .mang-ai-ui [data-screen=index] .inspector {border-top:1px solid var(--ui-line)}
+}
+@media(max-width:520px) {
+  .mang-ai-ui body.embedded[data-screen=generate],.mang-ai-ui body.embedded[data-screen=models] {padding:12px}
+  .mang-ai-ui [data-screen=generate] section {padding:14px}
+  .mang-ai-ui [data-screen=models] #cards {grid-template-columns:repeat(auto-fill,minmax(156px,1fr));gap:10px}
+  .mang-ai-ui [data-screen=models] .toolbar label {min-width:0;flex:1}
+  .mang-ai-ui [data-screen=media] .media-main {padding:14px}
+  .mang-ai-ui [data-screen=index] .canvas-toolbar {padding:12px}
+  .mang-ai-ui [data-screen=index] .toolbar-buttons {flex-wrap:wrap}
+  .mang-ai-ui [data-screen=index] .footer-bar {padding:10px 14px;gap:10px}
+}

@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash
 let token=params.get('token'),renewingToken=null;
 const host=params.get('host')||location.origin;
 window.addEventListener('hashchange',()=>location.reload());
-document.body.classList.toggle('light',params.get('theme')==='light');document.body.classList.toggle('compact',view==='quota');document.body.classList.toggle('session',view==='session');
+document.body.classList.toggle('compact',view==='quota');document.body.classList.toggle('session',view==='session');
 $('settings').hidden=view!=='settings';$('session-card').hidden=!['session','agent'].includes(view)||!session;$('agent-compose').hidden=view!=='agent'||!session;$('jobs').hidden=view!=='agent'||!session;$('open-agent').hidden=view!=='session';
 let state={accounts:[]},signature='',selectionDirty=false,busy=false,loaded=false,selectionSignature='',selectionRestored=false;
 const selectionKey='mang-ai-account-selection:'+session;

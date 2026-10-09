@@ -1,7 +1,6 @@
 import "./frame-theme.js";
 import {mountProgress} from './progress.js';
 const $=id=>document.getElementById(id),p=new URLSearchParams(location.hash.slice(1)),session=p.get('session'),token=p.get('token'),base=`./api/${p.get('project')}/gallery/`,host=p.get('host');
-document.documentElement.dataset.theme=p.get('theme')==='light'?'light':'dark';
 let signature='',busy=false,reference=null;
 async function api(path,body){const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...body?{'Content-Type':'application/json'}:{}},...body?{body:JSON.stringify(body)}:{},signal:AbortSignal.timeout(10000)});const result=await r.json();if(!r.ok)throw Error(result.error);return result;}
 function notify(data){if(host&&parent!==window)parent.postMessage({session,...data},host);}
