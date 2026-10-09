@@ -64,7 +64,7 @@ export class ExternalAccounts {
         }else{
           const credential=join(this.profile(id),'data/devin/credentials.toml');next.authenticated=existsSync(credential);
           if(next.authenticated){
-            if(this.readDevinUsage){try{const result=await this.readDevinUsage(credential);next.quota=result.quota;next.plan=result.plan;next.email=result.email;}catch(e){next.error=e.status===403?'Devinの残量APIが403で拒否しました。公式Devinで契約・アクセス状態を確認してください':e.status===401?'Devinの認証が拒否されました。再ログインしてください':'Devinの利用枠を取得できませんでした';}}
+            if(this.readDevinUsage){try{const result=await this.readDevinUsage(credential);next.quota=result.quota;next.plan=result.plan;next.email=result.email;}catch(e){next.error=e.status===403?'Devinの残量照会が拒否されました（403）。残量は未取得です':e.status===401?'Devinの認証が拒否されました。再ログインしてください':'Devinの利用枠を取得できませんでした';}}
             else next.error='Devinの利用枠は未取得です';
             if(!next.models?.length){const rpc=await this.connect(id);const result=await rpc.request('session/new',{cwd:this.profile(id),mcpServers:[]});
               next.models=(result.configOptions?.find(o=>o.id==='model')?.options||result.models?.availableModels||[]).map(m=>({id:m.value||m.modelId,name:m.name}));

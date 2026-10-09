@@ -3,7 +3,7 @@
 Verified with Devin CLI 3000.10.48 (2026-10-09). Unknown billing/fields fail
 closed to unavailable. No response containing identity/credentials is printed.
 """
-import json, pathlib, sys, time, tomllib, urllib.request, urllib.error
+import http.server, json, os, pathlib, re, signal, subprocess, sys, tempfile, threading, time, tomllib, urllib.request, urllib.error
 
 ENDPOINT = 'https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus'
 
@@ -78,25 +78,105 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
 
-def read_usage(path):
-    credentials = tomllib.loads(pathlib.Path(path).read_text())
+def read_usage(path, cli=None):
+    if cli is None:
+        installed = pathlib.Path.home()/'.local/bin/devin'
+        cli = str(installed) if installed.exists() else 'devin'
+    path = pathlib.Path(path).resolve()
+    original = path.read_text()
+    credentials = tomllib.loads(original)
     if credentials.get('api_server_url', 'https://server.codeium.com').rstrip('/') != 'https://server.codeium.com':
         raise ValueError('Unsupported server')
     key = credentials.get('windsurf_api_key')
     if not isinstance(key, str) or not key:
         raise ValueError('Missing credential')
-    metadata = b''.join(field(n, value) for n, value in [(1, 'Mang-AI'), (2, '0.1.0'), (3, key), (4, 'ja'), (5, 'linux'), (7, '0.1.0'), (12, 'Mang-AI')])
-    request = urllib.request.Request(ENDPOINT, data=field(1, metadata), headers={
-        'Content-Type': 'application/proto', 'Connect-Protocol-Version': '1'}, method='POST')
-    with urllib.request.build_opener(NoRedirect).open(request, timeout=15) as response:
-        data = response.read(1048577)
-        if len(data) > 1048576:
-            raise ValueError('Response too large')
-    return parse_quota(data)
+    # The CLI adds a short-lived identity proof (metadata field 31 and an
+    # Authorization header). Sending only the stored API key makes individual
+    # accounts look like multi-user clients. Let the official CLI produce and
+    # refresh that proof; do not reverse-engineer or persist it ourselves.
+    results = []
+    opener = urllib.request.build_opener(NoRedirect)
+    class QuotaOnly(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+        def do_POST(self):
+            self.connection.settimeout(15)
+            if self.path != '/exa.seat_management_pb.SeatManagementService/GetUserStatus':
+                self.send_error(404)
+                return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 1048576:
+                    raise ValueError('Invalid request size')
+                body = self.rfile.read(size)
+                headers = {k: v for k, v in self.headers.items()
+                           if k.lower() in {'authorization', 'content-type', 'connect-protocol-version', 'accept'}}
+                request = urllib.request.Request(ENDPOINT, data=body, headers=headers, method='POST')
+                try:
+                    with opener.open(request, timeout=12) as response:
+                        status, payload = response.status, response.read(1048577)
+                except urllib.error.HTTPError as error:
+                    status, payload = error.code, error.read(1048577)
+                if len(payload) > 1048576:
+                    raise ValueError('Response too large')
+                results.append((status, payload))
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/proto' if status == 200 else 'application/json')
+                self.send_header('Content-Length', str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception:
+                # No request/response/credential contents in stderr.
+                try:
+                    self.send_error(502)
+                except OSError:
+                    pass
+    server = http.server.HTTPServer(('127.0.0.1', 0), QuotaOnly)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # A private disposable profile prevents changing the account's CLI
+        # server setting or competing with its active coding sessions.
+        with tempfile.TemporaryDirectory(prefix='.quota-', dir=path.parent) as scratch:
+            scratch = pathlib.Path(scratch)
+            target = scratch/'data/devin/credentials.toml'
+            target.parent.mkdir(parents=True, mode=0o700)
+            line = f'api_server_url = "http://127.0.0.1:{server.server_port}"'
+            if re.search(r'^api_server_url\s*=', original, re.M):
+                private = re.sub(r'^api_server_url\s*=.*$', line, original, flags=re.M)
+            else:
+                private = original+'\n'+line+'\n'
+            with open(target, 'w', opener=lambda p, f: os.open(p, f, 0o600)) as file:
+                file.write(private)
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith(('CODEX_', 'OPENAI_', 'DEVIN_', 'WINDSURF_', 'COGNITION_', 'ANTHROPIC_'))}
+            env.update(XDG_DATA_HOME=str(scratch/'data'), XDG_CONFIG_HOME=str(scratch/'config'), XDG_CACHE_HOME=str(scratch/'cache'))
+            child = subprocess.Popen([cli, 'auth', 'status'], cwd=scratch, env=env,
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                child.wait(timeout=35)
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait()
+    finally:
+        server.shutdown()
+        server.server_close()
+    success = [payload for status, payload in results if status == 200]
+    if success:
+        return parse_quota(success[-1])
+    if results:
+        raise urllib.error.HTTPError(ENDPOINT, results[-1][0], 'Quota unavailable', None, None)
+    raise ValueError('Native CLI did not return quota')
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
-        print(json.dumps(read_usage(sys.argv[1]), ensure_ascii=False))
+        print(json.dumps(read_usage(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None), ensure_ascii=False))
     except urllib.error.HTTPError as error:
         print(json.dumps({'error': 'Devinの利用枠を取得できませんでした', 'status': error.code}))
         sys.exit(1)

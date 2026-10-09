@@ -44,7 +44,7 @@ export async function apply(ctx, options) {
   let service,editor,accounts,agentJobs;
   try {
     accounts=new ExternalAccounts({directory:join(config.dataDir,'external-agents'),...config.externalAgents,loginHelper:join(packageRoot,'python/devin-login.py'),credentials:ctx.get('credentials')});
-    accounts.readDevinUsage=credential=>new Promise((resolve,reject)=>execFile(config.externalAgents.python,[join(packageRoot,'python/devin-usage.py'),credential],{timeout:20000,maxBuffer:65536},(error,stdout)=>{if(error){let status;try{status=JSON.parse(stdout).status;}catch{}reject(Object.assign(Error('Devinの利用枠を取得できませんでした'),{status}));return;}try{resolve(JSON.parse(stdout));}catch{reject(Error('利用枠の形式が不正です'));}}));
+    accounts.readDevinUsage=credential=>new Promise((resolve,reject)=>execFile(config.externalAgents.python,[join(packageRoot,'python/devin-usage.py'),credential,config.externalAgents.devin],{timeout:45000,maxBuffer:65536},(error,stdout)=>{if(error){let status;try{status=JSON.parse(stdout).status;}catch{}reject(Object.assign(Error('Devinの利用枠を取得できませんでした'),{status}));return;}try{resolve(JSON.parse(stdout));}catch{reject(Error('利用枠の形式が不正です'));}}));
     agentJobs=new ExternalAgentJobs(accounts,{sessionDirectory:id=>ctx.get('sessions')?.get(id)?.header.cwd});accounts.jobs=agentJobs;
     service=new MangaService(config,ctx.subprocess);editor=await startEditor(service,config.editorPort,accounts);
   }
