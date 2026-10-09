@@ -23,7 +23,7 @@ try{
   await gallery.locator('.card').click();await gallery.locator('#edit:not([disabled])').click();
   const edit=page.frameLocator('#editor-frame');await edit.locator('#selection').selectOption(bubble.id);await edit.locator('#text').fill('まだ保存していない台詞');
   await page.locator('[data-view=gallery]').click();await gallery.locator('[data-scope=all]').click();await expect(gallery.locator('#collections button')).toHaveCount(2);
-  await gallery.getByRole('button',{name:/別の作品/}).click();await gallery.locator('.card').click();await gallery.locator('#edit:not([disabled])').click();
+  await gallery.locator('#collection-picker').selectOption({label:'別の作品'});await gallery.locator('.card').click();await gallery.locator('#edit:not([disabled])').click();
   await page.getByText('別の画像・ページを開く前に、編集中の文字やマスクを保存・処理してください。',{exact:true}).waitFor();
   assert.equal(await edit.locator('#text').inputValue(),'まだ保存していない台詞');assert.match(await edit.locator('#title').innerText(),/雨上がり/);
   await expect(meter).toBeVisible();assert.equal(await page.locator('#workspace-progress article.progress-card').count(),1);
@@ -39,10 +39,16 @@ try{
   await page.locator('[data-view=editor]').click();assert.equal(await edit.locator('#text').inputValue(),'まだ保存していない台詞');await edit.locator('#save').click();await edit.getByText(/保存しました · revision/).waitFor();
   await page.locator('[data-view=gallery]').click();await gallery.locator('.card').click();await gallery.locator('#edit:not([disabled])').click();await edit.getByRole('heading',{name:'別の作品',exact:true}).waitFor();
   assert.equal(await edit.locator('#text').inputValue(),'');assert.equal(page.context().pages().length,1);
-  await page.locator('[data-view=gallery]').click();await gallery.locator('[data-scope=session]').click();await gallery.getByRole('heading',{name:'雨上がりの手紙',exact:true}).waitFor();
+  await page.locator('[data-view=gallery]').click();await gallery.locator('[data-scope=session]').click();await gallery.locator('#group-picker').selectOption('projects');await expect(gallery.locator('#title')).toHaveText('雨上がりの手紙');await gallery.locator('.card').waitFor();
+  const top=await page.locator('#gallery-frame').boundingBox(),first=await gallery.locator('.card').first().boundingBox();assert(first.y-top.y<=170,'Compact gallery should show media within 170px of the frame top');
+  await gallery.locator('#search-toggle').click();await gallery.locator('#search').fill('ページ');await gallery.locator('#search-form').evaluate(form=>form.requestSubmit());await expect(gallery.locator('.card')).toHaveCount(1);
+  await page.locator('[data-view=models]').click();await page.locator('[data-view=gallery]').click();assert.equal(await gallery.locator('#search').inputValue(),'ページ');
+  await gallery.locator('#search').fill('');await gallery.locator('#search-form').evaluate(form=>form.requestSubmit());await gallery.locator('#search-toggle').click();
   await page.screenshot({path:root+'/workspace-desktop.png'});
   await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert(await gallery.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:root+'/workspace-mobile.png'});
-  await page.goto(editor.workspaceUrl(sessionKey('gallery'),'gallery')+'&session=new-session');await page.frameLocator('#gallery-frame').getByText('まだ登録されていません。制作を始めるとここに表示されます。',{exact:true}).waitFor();
+  for(const width of [520,849,850,851]){await page.setViewportSize({width,height:900});assert(await gallery.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Gallery must fit at '+width);}
+  await page.locator('[data-view=gallery]').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('[data-view=generate]')).toHaveAttribute('aria-selected','true');await page.keyboard.press('Home');await expect(page.locator('[data-view=gallery]')).toHaveAttribute('aria-selected','true');
+  await page.goto(editor.workspaceUrl(sessionKey('gallery'),'gallery')+'&session=new-session');await page.frameLocator('#gallery-frame').getByText('まだ登録されていません。制作を始めるとここに表示されます。',{exact:true}).waitFor();await page.frameLocator('#gallery-frame').locator('#create-media').click();await expect(page.locator('#generate-frame')).toBeVisible();assert.equal(service.store.db.prepare("SELECT count(*) AS count FROM integrations WHERE session=? AND kind='media'").get(sessionKey('new-session')).count,0);
   assert.deepEqual(errors.filter(e=>!e.includes('503 (Service Unavailable)')),[]);console.log('PASS unified workspace: default gallery and persistent progress, measured/unknown/failure/completion/disconnection, session filtering, guarded unsaved edits, empty session, mobile');
 }finally{await browser.close();await editor.close();await service.close();}

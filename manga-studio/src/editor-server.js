@@ -12,6 +12,8 @@ import { postingCopy } from './posting-export.js';
 import {SessionMedia} from './session-media.js';
 
 const staticFiles = {
+  '/frame-theme.js':['public/frame-theme.js','text/javascript; charset=utf-8'],
+  '/embedded.css':['public/embedded.css','text/css; charset=utf-8'],
   '/accounts.html':['public/accounts.html','text/html; charset=utf-8'],
   '/accounts.js':['public/accounts.js','text/javascript; charset=utf-8'],
   '/accounts.css':['public/accounts.css','text/css; charset=utf-8'],

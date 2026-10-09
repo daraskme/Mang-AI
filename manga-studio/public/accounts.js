@@ -1,10 +1,15 @@
+import "./frame-theme.js";
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1)),session=params.get('session'),view=params.get('view')||'settings';
 let token=params.get('token'),renewingToken=null;
 const host=params.get('host')||location.origin;
 window.addEventListener('hashchange',()=>location.reload());
 document.body.classList.toggle('light',params.get('theme')==='light');document.body.classList.toggle('compact',view==='quota');document.body.classList.toggle('session',view==='session');
 $('settings').hidden=view!=='settings';$('session-card').hidden=!['session','agent'].includes(view)||!session;$('agent-compose').hidden=view!=='agent'||!session;$('jobs').hidden=view!=='agent'||!session;$('open-agent').hidden=view!=='session';
-let state={accounts:[]},signature='',selectionDirty=false,busy=false,loaded=false;
+let state={accounts:[]},signature='',selectionDirty=false,busy=false,loaded=false,selectionSignature='',selectionRestored=false;
+const selectionKey='mang-ai-account-selection:'+session;
+let selectionDraft=null;try{selectionDraft=JSON.parse(sessionStorage.getItem(selectionKey)||'null');}catch{}
+function selectionOpen(open){$('assignment-settings').hidden=!open;$('assignment-toggle').setAttribute('aria-expanded',String(open));saveSelectionDraft();resize();}
+function saveSelectionDraft(){if(!session)return;try{sessionStorage.setItem(selectionKey,JSON.stringify({open:!$('assignment-settings').hidden,dirty:selectionDirty,accountId:$('session-account').value,model:$('session-model').value}));}catch{}}
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 const button=(text,run)=>{const b=el('button',text);b.type='button';b.onclick=()=>action(run,b);return b;};
 async function renewToken(){
@@ -36,7 +41,7 @@ async function api(action,body,retried=false){
   if(!r.headers.get('content-type')?.includes('application/json'))throw Error('登録情報を読み込めません。Mang-AIへの接続を確認してください。');
   const data=await r.json();if(!r.ok)throw Error(data.error||'通信に失敗しました');return data;
 }
-function resize(){if(parent!==window)parent.postMessage({type:'mang-ai:accounts-size',session,height:document.documentElement.scrollHeight,view},host);}
+function resize(){if(parent!==window){const style=getComputedStyle(document.body),height=Math.ceil(document.querySelector('main').getBoundingClientRect().height+parseFloat(style.paddingTop)+parseFloat(style.paddingBottom));parent.postMessage({type:'mang-ai:accounts-size',session,height,view},host);}}
 async function action(fn,b){if(b)b.disabled=true;$('notice').textContent='';try{await fn();await update();}catch(e){$('notice').textContent=e.message;}finally{if(b)b.disabled=false;resize();}}
 function humanWindow(w){if(w.label==='日次'||w.label==='週次')return w.label;if(!w.minutes)return w.label;return w.label+' · '+(w.minutes>=1440?w.minutes/1440+'日':w.minutes>=60?w.minutes/60+'時間':w.minutes+'分');}
 function renderQuota(){
@@ -44,17 +49,28 @@ function renderQuota(){
   const selected=state.accounts.find(a=>a.id===state.selection?.accountId);
   if(!session){root.append(el('p','セッションを開くと担当アカウントの残量を表示します','muted'));return;}
   if(!selected){root.append(el('p','Codex / Devin 未選択','muted'));return;}
-  root.append(el('h2',`${selected.provider==='codex'?'Codex':'Devin'} · ${selected.label}`));
+  const heading=el('h2',`${selected.provider==='codex'?'Codex':'Devin'} · ${selected.label}`),model=selected.models?.find(m=>m.id===state.selection?.model);heading.title=model?.name||state.selection?.model||'';root.append(heading);
   if(!selected.quota?.windows?.length)root.append(el('p',selected.error||'残り使用量・リセット：未取得','muted'));
   for(const w of selected.quota?.windows||[]){const row=el('div',undefined,'quota-window');row.append(el('span',humanWindow(w)),el('strong',w.remainingPercent===null?'未取得':`残り ${Math.round(w.remainingPercent)}%`));
     if(w.remainingPercent!==null){const p=el('progress');p.max=100;p.value=w.remainingPercent;p.setAttribute('aria-label',humanWindow(w)+'の残り使用量');row.append(p);}
     const reset=w.resetsAt?new Date(w.resetsAt*1000):null;row.append(el('div',reset?`リセット ${new Intl.DateTimeFormat('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZoneName:'short'}).format(reset)}${reset.getTime()<=Date.now()?'（再取得待ち）':''}`:'リセット時刻：未取得','muted'));root.append(row);
   }
-  if(selected.quota?.updatedAt)root.append(el('p',`更新 ${new Date(selected.quota.updatedAt).toLocaleTimeString('ja-JP')}${Date.now()-selected.quota.updatedAt>120000?' · 古い取得値':''}`,'muted'));
+  if(selected.quota?.updatedAt){const stale=Date.now()-selected.quota.updatedAt>120000,updated=el('p',`更新 ${new Date(selected.quota.updatedAt).toLocaleTimeString('ja-JP')}${stale?' · 古い取得値':''}`,'muted');updated.hidden=view==='quota'&&!stale;root.append(updated);}
   if(selected.error&&selected.quota?.windows?.length)root.append(el('p',selected.error+'（前回の値）','error'));
 }
 function populateModels(accountId,model){const select=$('session-model');select.replaceChildren();const account=state.accounts.find(a=>a.id===accountId);for(const m of account?.models||[]){const o=el('option',m.name);o.value=m.id;select.append(o);}if(model)select.value=model;}
-function renderSelection(){if(!['session','agent'].includes(view)||selectionDirty)return;const select=$('session-account');select.replaceChildren();const none=el('option','担当を選択');none.value='';select.append(none);for(const a of state.accounts){const o=el('option',`${a.provider} · ${a.label}`);o.value=a.id;select.append(o);}select.value=state.selection?.accountId||'';populateModels(select.value,state.selection?.model);$('selection-note').textContent=state.jobs?.find(j=>j.status==='approval')?'担当からの確認があります。「開く」で回答してください':state.selection?'このセッションで保存済み':'「プラグイン」の「AIアカウント」から追加できます';}
+function renderSelection(){
+  if(!['session','agent'].includes(view))return;
+  const selected=state.accounts.find(a=>a.id===state.selection?.accountId),model=selected?.models?.find(m=>m.id===state.selection?.model),approval=state.jobs?.some(j=>j.status==='approval');
+  $('assignment-label').textContent=selected?`${selected.provider==='codex'?'Codex':'Devin'} · ${selected.label} · ${model?.name||state.selection.model}`:'外部担当を選ぶ';$('assignment-label').title=$('assignment-label').textContent;
+  $('assignment-alert').hidden=!approval;$('assignment-alert').textContent=approval?'担当からの確認があります。「担当と話す」から回答してください。':'';
+  $('open-agent').hidden=view!=='session';
+  const next=JSON.stringify([state.selection,state.accounts.map(a=>[a.id,a.label,a.models])]);
+  if(!selectionDirty&&next!==selectionSignature){selectionSignature=next;const select=$('session-account');select.replaceChildren(el('option','担当を選択'));select.firstChild.value='';for(const a of state.accounts){const o=el('option',`${a.provider} · ${a.label}`);o.value=a.id;select.append(o);}select.value=state.selection?.accountId||'';populateModels(select.value,state.selection?.model);}
+  if(!selectionRestored){selectionRestored=true;if(selectionDraft?.dirty&&(selectionDraft.accountId===''||state.accounts.some(a=>a.id===selectionDraft.accountId))){$('session-account').value=selectionDraft.accountId;populateModels(selectionDraft.accountId,selectionDraft.model);selectionDirty=true;}$('assignment-settings').hidden=!(selectionDraft?.open||view==='agent');$('assignment-toggle').setAttribute('aria-expanded',String(!$('assignment-settings').hidden));}
+  $('assignment-dirty').hidden=!selectionDirty;$('cancel-selection').hidden=!selectionDirty;
+  $('selection-note').textContent=selectionDirty?'変更はまだ適用していません。適用するまで担当と残量表示は変わりません。':state.selection?'このセッションの担当です。進行中の作業は開始時の担当で続きます。':'登録は「プラグイン → AIアカウント」から。選択だけでは依頼を送信しません。';
+}
 function loginBox(account){const box=el('div',undefined,'login'),login=account.login;
   const link=el('a','公式ログインを開く');link.href=login.url;link.target='_blank';link.rel='noopener noreferrer';box.append(link);
   if(login.code)box.append(el('p','ログインページに入力するコード'),el('code',login.code));
@@ -80,9 +96,11 @@ $('retry-load').onclick=()=>update();
 $('add-account').onsubmit=e=>{e.preventDefault();action(async()=>{await api('add',{provider:$('provider').value,label:$('account-label').value});$('account-label').value='';});};
 $('deepseek-form').onsubmit=e=>{e.preventDefault();action(async()=>{const key=$('deepseek-key').value;$('deepseek-key').value='';await api('deepseek-key',{key});});};
 $('deepseek-remove').onclick=()=>action(()=>confirm('保存したDeepSeek APIキーを解除しますか？')?api('deepseek-key',{key:null}):null);
-$('session-account').onchange=()=>{selectionDirty=true;const id=$('session-account').value;populateModels(id);if(id)action(async()=>{await api('refresh',{id});state=await api('state?session='+encodeURIComponent(session));populateModels(id);});};
-$('session-model').onchange=()=>{selectionDirty=true;};
-$('save-selection').onclick=()=>action(async()=>{await api('select',{session,accountId:$('session-account').value||null,model:$('session-model').value});selectionDirty=false;parent.postMessage({type:'mang-ai:account-selected',session},host);});
+$('assignment-toggle').onclick=()=>selectionOpen($('assignment-settings').hidden);
+$('session-account').onchange=()=>{selectionDirty=true;const id=$('session-account').value;populateModels(id);saveSelectionDraft();renderSelection();resize();if(id)action(async()=>{await api('refresh',{id});state=await api('state?session='+encodeURIComponent(session));if($('session-account').value===id){const model=$('session-model').value;populateModels(id,model);saveSelectionDraft();}});};
+$('session-model').onchange=()=>{selectionDirty=true;saveSelectionDraft();renderSelection();resize();};
+$('cancel-selection').onclick=()=>{selectionDirty=false;selectionSignature='';renderSelection();selectionOpen(false);};
+$('save-selection').onclick=()=>action(async()=>{await api('select',{session,accountId:$('session-account').value||null,model:$('session-model').value});selectionDirty=false;selectionSignature='';selectionOpen(false);parent.postMessage({type:'mang-ai:account-selected',session},host);});
 new ResizeObserver(resize).observe(document.body);await update();setInterval(()=>{if(!document.hidden)update();},3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)update();});
 const draftKey='mang-ai-agent-draft:'+session;
 if(view==='agent'){try{$('agent-prompt').value=sessionStorage.getItem(draftKey)||'';}catch{}}

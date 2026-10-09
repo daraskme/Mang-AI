@@ -1,3 +1,4 @@
+import "./frame-theme.js";
 import { pageSVG, bubbleLayout } from './render.js';
 import { LAYOUTS, PAGE_W, PAGE_H } from './model.js';
 import { mountProgress } from './progress.js';

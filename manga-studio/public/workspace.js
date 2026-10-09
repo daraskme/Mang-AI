@@ -1,3 +1,4 @@
+import "./frame-theme.js";
 import {mountProgress} from './progress.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
 document.documentElement.dataset.theme=params.get('theme')==='light'?'light':'dark';
@@ -12,8 +13,8 @@ function show(view){
   // Legacy progress links focus the persistent bars without replacing the current view.
   if(view==='progress'){$('workspace-progress').focus();return;}
   if(!frames[view])return;
-  current=view;for(const [key,frame]of Object.entries(frames))frame.hidden=key!==view;
-  for(const button of document.querySelectorAll('[data-view]'))button.setAttribute('aria-pressed',String(button.dataset.view===view));
+  current=view;document.body.dataset.activeView=view;for(const [key,frame]of Object.entries(frames))frame.hidden=key!==view;
+  for(const button of document.querySelectorAll('[data-view]')){const selected=button.dataset.view===view;button.setAttribute('aria-pressed',String(selected));button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;}
   $('editor-empty').hidden=view!=='editor'||!!frames.editor.getAttribute('src');
   // Keep visited frames mounted so unsaved text, masks and gallery filters survive.
   if(!['editor','generate'].includes(view)&&!frames[view].getAttribute('src'))frames[view].src=embedded(screen(view));
@@ -35,11 +36,13 @@ async function openEditor(value){
 for(const button of document.querySelectorAll('[data-view]'))button.onclick=async()=>{
   try{const view=button.dataset.view;if(view==='editor'&&!frames.editor.getAttribute('src')){const c=await context();if(c.editorUrl)return await openEditor(c.editorUrl);}if(view==='generate'&&!frames.generate.getAttribute('src')){const c=await context();if(!c.generationUrl){$('workspace-status').textContent='生成するセッションを先に開いてください';return;}frames.generate.src=embedded(c.generationUrl);}show(view);}catch(e){$('workspace-status').textContent=e.message;}
 };
+document.querySelector('[role=tablist]').addEventListener('keydown',event=>{const tabs=[...document.querySelectorAll('[data-view]')],index=tabs.indexOf(document.activeElement);if(index<0||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const target=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[target].focus();tabs[target].click();});
 window.addEventListener('message',event=>{
   if(event.origin!==location.origin||!Object.values(frames).some(f=>event.source===f.contentWindow)||event.data?.type!=='mang-ai:navigate')return;
   try{
     const url=new URL(event.data.url);if(url.origin!==location.origin)return;
     if(url.pathname.endsWith('/gallery.html'))show('gallery');
+    else if(url.pathname.endsWith('/generate.html')){if(!frames.generate.getAttribute('src'))frames.generate.src=embedded(url.href);show('generate');}
     else if(url.pathname.endsWith('/progress.html'))show('progress');
     else if((url.pathname===new URL('./',location.href).pathname||url.pathname.endsWith('/media.html')))openEditor(url.href).catch(e=>$('workspace-status').textContent=e.message);
   }catch{/* Ignore unrelated frames and malformed messages. */}
@@ -52,5 +55,5 @@ mountProgress($('workspace-progress'),{compact:true,fetchSnapshot:()=>request('p
 if(params.get('view')==='progress')show('progress');
 if(params.get('accountToken')){
   const quota=$('workspace-quota'),url=new URL('./accounts.html',location.href);url.hash=new URLSearchParams({token:params.get('accountToken'),session,view:'quota',theme:params.get('theme')||'dark',host:location.origin}).toString();quota.src=url.href;quota.hidden=false;
-  window.addEventListener('message',event=>{if(event.source===quota.contentWindow&&event.origin===location.origin&&event.data?.type==='mang-ai:accounts-size')quota.style.height=Math.max(40,Math.min(220,event.data.height||60))+'px';});
+  window.addEventListener('message',event=>{if(event.source===quota.contentWindow&&event.origin===location.origin&&event.data?.type==='mang-ai:accounts-size')quota.style.height=Math.max(28,Math.min(260,event.data.height||40))+'px';});
 }

@@ -1,3 +1,4 @@
+import "./frame-theme.js";
 import {navigateMedia} from './navigation.js';
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1));
 const owner=params.get('project'),assetId=params.get('asset'),token=params.get('token');

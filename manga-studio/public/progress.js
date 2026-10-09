@@ -23,7 +23,7 @@ function overview(data){
       const fraction=known&&running?Math.max(0,Math.min(1,part)):0;
       // Panel count and the current panel's reported fraction, never elapsed time.
       const ratio=running&&!known&&completed===0?null:(completed+fraction)/total;
-      const detail=`${labels[job.state]||job.state} · ${completed}/${job.total}コマ${running&&job.progress?.message?' · '+job.progress.message:''}${running&&known?' · 現在のコマ '+Math.round(fraction*100)+'%':''}${job.error?' · '+job.error:''}`;
+      const detail=`${labels[job.state]||job.state} · ${Number.isFinite(ratio)?'全体 '+Math.round(ratio*100)+'%':'全体進捗は未確定'} · ${completed}/${job.total}コマ${running&&job.progress?.message?' · '+job.progress.message:''}${running&&known?' · 現在のコマ '+Math.round(fraction*100)+'%':''}${job.error?' · '+job.error:''}`;
       return progressRow(item.title+' · 画像生成',job.state,detail,ratio);
     }
     const rendered=item.stages.find(s=>s.id==='render');
@@ -35,7 +35,8 @@ function overview(data){
     const row=progressRow(title,item.state,detail,item.ratio);row.dataset.media=item.id;if(error)row.dataset.error='true';rows.unshift(row);
   }
   for(const task of data.gpu?.requests||[])if(activeStates.has(task.state))rows.unshift(progressRow(task.label||'GPU処理',task.state,({running:'実行中',queued:'順番待ち',waiting_memory:'メモリ待ち'}[task.state])+(task.reason?' · '+task.reason:''),null));
-  rows.sort((a,b)=>Number(['running','queued','loading','generating','waiting_memory'].includes(b.dataset.state))-Number(['running','queued','loading','generating','waiting_memory'].includes(a.dataset.state)));
+  const rank=row=>['running','queued','loading','generating','waiting_memory'].includes(row.dataset.state)?0:['failed','interrupted','unknown'].includes(row.dataset.state)||row.dataset.error==='true'?1:2;
+  rows.sort((a,b)=>rank(a)-rank(b));
   return rows.length?rows:[progressRow('制作の進捗','pending','このセッションの制作待ち',0)];
 }
 
@@ -44,19 +45,20 @@ export function mountProgress(host,{fetchSnapshot,onOpen,compact=false}) {
   const toolbar=el('div',undefined,'progress-toolbar'),heading=el('strong','制作の進捗'),connection=el('span','接続中…','progress-connection'),cards=el('div',undefined,'progress-cards');
   const gpu=el('section',undefined,'progress-card');gpu.hidden=true;gpu.setAttribute('aria-label','GPUとメモリの使用状況');
   connection.setAttribute('role','status');toolbar.append(heading,connection);
-  const summary=el('div',undefined,'progress-overview'),details=el('div',undefined,'progress-details');details.append(gpu,cards);
+  const summary=el('div',undefined,'progress-overview'),details=el('div',undefined,'progress-details'),actions=el('div',undefined,'progress-actions'),more=el('button');let showAll=false;
+  more.type='button';more.hidden=true;more.setAttribute('aria-expanded','false');more.onclick=()=>{showAll=!showAll;summary.classList.toggle('show-all',showAll);more.setAttribute('aria-expanded',String(showAll));more.textContent=showAll?'進捗をたたむ':`ほか ${Math.max(0,summary.children.length-2)} 件の処理`;};details.append(gpu,cards);
   if(compact){
     host.classList.add('progress-compact');details.hidden=true;
     const toggle=el('button','工程・履歴');toggle.type='button';toggle.setAttribute('aria-expanded','false');
-    toggle.onclick=()=>{details.hidden=!details.hidden;toggle.setAttribute('aria-expanded',String(!details.hidden));};toolbar.append(toggle);
-    host.append(toolbar,summary,details);
+    toggle.onclick=()=>{details.hidden=!details.hidden;toggle.setAttribute('aria-expanded',String(!details.hidden));};actions.append(more,toggle);
+    host.append(toolbar,summary,actions,details);
   }else host.append(toolbar,details);
   let stopped=false,busy=false,timer;
   async function update(){
     if(stopped||busy)return;busy=true;
     try {
       const data=await fetchSnapshot();if(stopped)return;
-      if(compact)summary.replaceChildren(...overview(data));
+      if(compact){summary.replaceChildren(...overview(data));summary.classList.toggle('show-all',showAll);more.hidden=summary.children.length<=2;more.textContent=showAll?'進捗をたたむ':`ほか ${Math.max(0,summary.children.length-2)} 件の処理`;}
       gpu.hidden=!data.gpu?.enabled;
       if(data.gpu?.enabled){
         const info=data.gpu,free=info.resources,active=(info.requests||[]).filter(r=>['running','queued','waiting_memory'].includes(r.state));

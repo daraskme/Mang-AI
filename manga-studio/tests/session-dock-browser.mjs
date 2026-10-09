@@ -31,6 +31,8 @@ try{
   const workspace=page.frameLocator('iframe[title="制作スペース"]:visible');await expect(workspace.locator('#workspace-title')).toHaveText('統合画面テスト 0');
   await expect(workspace.locator('#gallery-frame')).toBeVisible();await expect(workspace.locator('#workspace-progress progress').first()).toBeVisible();
   const accountFrame=page.locator('iframe[title="このセッションのAI担当"]:visible');
+  await expect(page.frameLocator('iframe[title="このセッションのAI担当"]:visible').locator('#assignment-settings')).toBeHidden();
+  await page.waitForTimeout(200);assert((await accountFrame.boundingBox()).height<85,'The closed account selector should fit in one row');
   assert.equal(new URLSearchParams(new URL(await accountFrame.getAttribute('src')).hash.slice(1)).get('session'),sessions[0]);
   await expect(workspace.frameLocator('#workspace-quota').locator('#quota')).toContainText('Codex / Devin 未選択');
   const quotaBox=await workspace.locator('#workspace-quota').boundingBox(),progressBox=await workspace.locator('#workspace-progress').boundingBox();assert(quotaBox.y+quotaBox.height<=progressBox.y+1);
@@ -43,8 +45,12 @@ try{
   await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[1]);await expect(strip.locator('#reference')).toBeHidden();await expect(workspace.locator('#workspace-title')).toHaveText('統合画面テスト 1');
   await expect(accountFrame).toHaveAttribute('src',new RegExp('session='+sessions[1]));
   await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[0]);await expect(strip.locator('#reference')).toBeVisible();assert.equal(await draft.evaluate(e=>e.value??e.textContent),'送信しない下書き');
-  await workspace.locator('[data-view=gallery]').click();await page.screenshot({path:join(root,'session-dock-desktop.png')});await page.setViewportSize({width:390,height:844});
-  await expect(strip.locator('#inline-progress progress').first()).toBeVisible();await draft.click();await expect(draft).toBeFocused();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(root,'session-dock-mobile.png')});
+  await workspace.locator('[data-view=gallery]').click();await workspace.frameLocator('#gallery-frame').locator('#group-picker').selectOption('projects');
+  await page.evaluate(()=>{document.body.style.color='rgb(230, 235, 240)';});await expect(workspace.frameLocator('#gallery-frame').locator('html')).toHaveAttribute('data-theme','dark');
+  await workspace.locator('[data-view=generate]').click();assert.equal(await workspace.frameLocator('#generate-frame').locator('#prompt').inputValue(),'生成しないプロンプト');await expect(workspace.frameLocator('#generate-frame').locator('html')).toHaveAttribute('data-theme','dark');
+  await page.evaluate(()=>{document.body.style.removeProperty('color');});await expect(workspace.frameLocator('#generate-frame').locator('html')).toHaveAttribute('data-theme','light');await workspace.locator('[data-view=gallery]').click();
+  await page.screenshot({path:join(root,'session-dock-desktop.png')});await page.setViewportSize({width:390,height:844});
+  await expect(strip.locator('#inline-progress progress').first()).toBeVisible();await draft.click();await expect(draft).toBeFocused();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await expect.poll(async()=>{const box=await accountFrame.boundingBox();return box.x>=0&&box.x+box.width<=390;}).toBe(true);await page.screenshot({path:join(root,'session-dock-mobile.png')});
   await page.setViewportSize({width:1600,height:1000});await expect(workspace.locator('#workspace-title')).toHaveText('統合画面テスト 0');await workspace.locator('[data-view=generate]').click();assert.equal(await workspace.frameLocator('#generate-frame').locator('#prompt').inputValue(),'生成しないプロンプト');
   // A user-collapsed pane stays collapsed when returning to this session.
   await page.evaluate(()=>window.__testCtx.sidebarRight.toggleExpanded());await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[1]);await page.evaluate(id=>window.__testCtx.get('uiWorkspace').openSession(id),sessions[0]);

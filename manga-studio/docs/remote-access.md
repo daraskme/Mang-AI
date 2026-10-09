@@ -57,6 +57,8 @@ systemctl --user enable --now mang-ai-web.service mang-ai-tunnel.service
 
 Accessでログインした後もDSH自身の認証は保持します。起動時に表示される認証付きURLを、自分の端末だけで使ってください。再起動でDSHのトークンは更新されます。認証付きURLを公開READMEへ貼らないでください。
 
+Accessのログイン後に `dsh web authentication required; reopen the URL printed by dsh web.` が出る場合は、DSH側の認証も必要です。最新の起動ログにある認証付きURLを公開ホスト名で開き、そのブラウザにDSHのCookieを保存します。単なる再読み込みやAccessへの再ログインだけで直るとは限りません。認証付きURLは公開せず、通常利用するブラウザで開けたことを確認してください。
+
 ## 確認と停止
 
 - ログアウトしたブラウザがAccessのログイン画面へ移動し、会話・画像・APIを読めないこと。
@@ -66,4 +68,4 @@ Accessでログインした後もDSH自身の認証は保持します。起動�
 
 停止は `systemctl --user stop mang-ai-tunnel.service`、自動起動解除は `systemctl --user disable mang-ai-tunnel.service`。GUIのローカル利用は継続できます。
 
-ローカルのHost/Origin拒否、認証、同一URL配下のギャラリーと生成画面は自動試験に含まれます。PIN・Google認証とインターネット経由の到達確認は、それぞれのCloudflareアカウントで設定後に実施してください。
+ローカルのHost/Origin拒否、認証、同一URL配下のギャラリーと生成画面は自動試験に含まれます。2026-10-09には管理中の環境でメールPINによるAccess認証、DSHのCookie取得、外部URLの本体・ギャラリー・AIアカウント画面のHTTP 200を確認し、利用者の通常のChromeでもMang-AIが表示されました。Google認証、別回線のスマートフォン、外部経由の実生成はこの確認に含みません。新規導入先ではそれぞれのAccess設定で検証してください。

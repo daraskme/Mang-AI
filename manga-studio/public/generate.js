@@ -1,3 +1,4 @@
+import "./frame-theme.js";
 import {navigateMedia} from './navigation.js';
 const $=id=>document.getElementById(id),hash=new URLSearchParams(location.hash.slice(1));
 const key=hash.get('project'),token=hash.get('token');let current,serial=0,modelCatalog=[],selectedWeights=new Map();

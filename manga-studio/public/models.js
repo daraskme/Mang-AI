@@ -1,3 +1,4 @@
+import "./frame-theme.js";
 const $=id=>document.getElementById(id),params=new URLSearchParams(location.hash.slice(1)),base=`./api/${params.get('project')}/gallery/`,token=params.get('token'),session=params.get('session')||'';
 const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 let catalog=[],selectedModel='',adapters=new Map(),serial=0,dirty=false,loadedProvider='';
