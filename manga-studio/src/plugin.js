@@ -40,6 +40,9 @@ async function lockRoot(root) {
 /** Mount tools and the lettering editor on the normal DSH plugin lifecycle. */
 export async function apply(ctx, options) {
   const config=loadConfig(options.configFile);
+  // Public configuration only. The index and settings RPC still require DSH
+  // authentication; the browser matches this exact HTTPS origin before opting in.
+  ctx.on('webserver/index-inject',table=>table.push({kind:'global',name:'__MANGAI_SETTINGS_ORIGIN__',value:config.remoteOrigin||null}));
   const unlock=await lockRoot(config.dataDir);
   let service,editor,accounts,agentJobs;
   try {

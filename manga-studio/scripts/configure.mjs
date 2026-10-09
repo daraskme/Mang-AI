@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadConfig, packageRoot } from '../src/config.js';
 import { localCompactionPolicy } from '../src/context-policy.js';
+import { prepareHarnessSettings } from '../src/harness-settings.js';
 
 /** Produce a DSH overlay without changing any existing user profile. */
 export async function configure({patchPath=resolve(packageRoot,'local.patch.yml')}={}) {
@@ -13,6 +14,7 @@ export async function configure({patchPath=resolve(packageRoot,'local.patch.yml'
     await writeFile(file,await readFile(resolve(packageRoot,'studio.config.example.json')),{flag:'wx'});
   }
   const config=loadConfig(file);
+  await prepareHarnessSettings(packageRoot);
   const q=config.agent,coder=config.coder;
   const localized=JSON.parse(await readFile(resolve(packageRoot,'plugins/local-runtime/translations/ja.json'),'utf8').catch(()=> '{}'));
   for(const [ns,meta]of Object.entries(localized))if(ns.startsWith('package:'))await writeFile(resolve(packageRoot,'node_modules/@deepseek-ai',ns.slice(8),'locale/ja.json'),JSON.stringify({meta},null,2)+'\n');
