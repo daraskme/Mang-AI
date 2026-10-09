@@ -2,3 +2,4 @@
 
 [hidden]{display:none!important}textarea{font:inherit;width:100%;padding:8px;margin:6px 0;border:1px solid #758ba566;border-radius:6px;resize:vertical;color:inherit;background:#839bb51a}#agent-compose form>button{margin-top:4px}
 body.session button{white-space:nowrap;flex-shrink:0}
+fieldset{min-width:0;margin:0;padding:0;border:0}#connection{border-color:#d99848}#connection button{margin-top:4px}

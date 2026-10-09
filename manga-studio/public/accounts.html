@@ -1,13 +1,15 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AIアカウント · Mang-AI</title><link rel="stylesheet" href="./accounts.css"></head><body>
 <main>
+<section id="connection" role="status"><p id="connection-message">保存済みの登録情報を読み込んでいます…</p><button id="retry-load" type="button" hidden>読み込みを再試行</button> <a id="reopen-app" href="/" target="_blank" rel="noopener" hidden>Mang-AIを開く</a></section>
 <section id="session-card" hidden><strong>このセッションのコーディング担当</strong><div class="row"><select id="session-account" aria-label="担当アカウント"><option value="">未選択</option></select><select id="session-model" aria-label="担当モデル"></select><button id="save-selection">適用</button><button id="open-agent">開く</button></div><p id="selection-note"></p></section>
 <section id="quota" aria-label="AIの残り使用量"></section>
-<div id="settings">
+<fieldset id="settings" disabled>
 <h1>AIアカウント</h1><p>A1から依頼するコーディング担当をセッションごとに選べます。アカウントを変更しても、開始済みの作業は開始時の担当で続きます。</p>
 <form id="add-account" class="row"><select id="provider" aria-label="サービス"><option value="codex">Codex · ChatGPTログイン</option><option value="devin">Devin CLI</option></select><input id="account-label" aria-label="アカウント名" placeholder="アカウント名（仕事用など）" maxlength="80" required><button>アカウントを追加</button></form>
 <div id="accounts"></div>
+<p id="empty-accounts" hidden>登録済みのアカウントはありません。</p>
 <section><h2>DeepSeek API</h2><p id="deepseek-state">未取得</p><p>選択した会話内容はDeepSeekへ送信され、APIの利用料金が発生します。保存後はモデル設定のDeepSeekから選択できます。</p><form id="deepseek-form" class="row"><input id="deepseek-key" type="password" aria-label="DeepSeek APIキー" autocomplete="new-password" placeholder="APIキー"><button>キーを保存</button><button type="button" id="deepseek-remove">登録を解除</button></form></section>
-</div>
+</fieldset>
 <section id="agent-compose" hidden><h2>このセッションの担当へ直接依頼</h2><p>選んだCodex / Devinに送信します。A1との会話から依頼することもできます。</p><form id="agent-form"><textarea id="agent-prompt" aria-label="担当への依頼" rows="4" maxlength="100000" placeholder="コーディングや相談の依頼内容" required></textarea><button>担当に送信</button></form></section>
 <section id="jobs" hidden></section>
 <p id="notice" role="status"></p>

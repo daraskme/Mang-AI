@@ -52,5 +52,13 @@ try{
   await page.getByRole('button',{name:'プラグイン',exact:true}).click();
   await page.getByText('AIアカウント',{exact:true}).click();
   await expect(page.frameLocator('iframe[title="AIアカウント設定"]:visible').locator('#add-account')).toBeVisible();assert.deepEqual(errors,[]);
+  // A bookmarked account tab may retain a capability from a previous server.
+  // Recover it from the authenticated DSH page, never an anonymous token API.
+  const accountUrl=new URL(await page.locator('iframe[title="AIアカウント設定"]:visible').getAttribute('src'));
+  const expired=new URL(accountUrl);const hash=new URLSearchParams(expired.hash.slice(1));hash.set('token','synthetic-expired');expired.hash=hash.toString();
+  await page.goto(expired.href);await expect(page.locator('#connection')).toBeHidden();await expect(page.locator('#add-account button')).toBeEnabled();
+  assert.notEqual(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('token'),'synthetic-expired');
+  await page.reload();await expect(page.locator('#connection')).toBeHidden();
+  const anonymous=await browser.newContext();const unauthenticated=await anonymous.request.get(new URL('/',accountUrl).href);assert.equal(unauthenticated.status(),401);assert(!(await unauthenticated.text()).includes('__MANGAI_ACCOUNTS__'));await anonymous.close();
   console.log('PASS real DSH: gallery, quota above progress, per-session account frames, coding agent pane, references, draft preservation, responsive progress, collapsed preference');
 }finally{if(browser)await browser.close();child.kill('SIGTERM');await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);setTimeout(()=>{child.kill('SIGKILL');resolve();},5000).unref();});}

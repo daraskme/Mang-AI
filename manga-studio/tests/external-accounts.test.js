@@ -76,3 +76,21 @@ test('concurrent starts reserve one session and repeated turns share one connect
     rpc.emit('closed');assert.equal(jobs.get('a',current.id).status,'interrupted');assert.equal(jobs.pending.size,0);assert.equal(jobs.bindings.size,0);
   }finally{jobs.close();a.close();await rm(root,{recursive:true,force:true});}
 });
+test('saved registrations remain visible while live account details reload after restart',async()=>{
+  const root=await tempRoot('account-rehydrate'),original=new ExternalAccounts({directory:root});
+  const account=original.add({provider:'codex',label:'saved'});original.live.set(account.id,{models:[{id:'model'}]});original.select('session',{accountId:account.id,model:'model'});original.close();
+  const reopened=new ExternalAccounts({directory:root});let release,reads=0;
+  const gate=new Promise(resolve=>release=resolve);
+  reopened.connect=async()=>({request:async method=>{
+    if(method==='account/read'){reads++;await gate;return {account:{type:'chatgpt',planType:'test'}};}
+    if(method==='model/list')return {data:[{id:'model',displayName:'model'}]};
+    if(method==='account/rateLimits/read')return {rateLimits:{primary:{usedPercent:10}}};
+    throw Error('unexpected request');
+  }});
+  try{
+    const initial=await reopened.snapshot(null,{refresh:true});assert.equal(initial.accounts.length,1);assert.equal(initial.accounts[0].checking,true);assert.equal(initial.accounts[0].authenticated,undefined);
+    await reopened.snapshot(null,{refresh:true});assert.equal(reads,1);
+    release();await reopened.refreshing.get(account.id);
+    const restored=await reopened.snapshot('session');assert.equal(restored.accounts[0].authenticated,true);assert.equal(restored.accounts[0].models[0].id,'model');assert.equal(restored.selection.accountId,account.id);
+  }finally{release();reopened.close();await rm(root,{recursive:true,force:true});}
+});

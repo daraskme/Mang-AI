@@ -35,5 +35,9 @@ try{
   await page.screenshot({path:join(root,'accounts-session.png')});
   const settings=new URL(editor.accountsUrl());await page.goto(settings.href);await expect(page.locator('#deepseek-key')).toBeEnabled();await page.locator('#deepseek-key').fill('synthetic-private-key');await page.getByRole('button',{name:'キーを保存'}).click();await expect(page.locator('#deepseek-state')).toHaveText('APIキー登録済み');assert.equal(stored,'synthetic-private-key');assert.equal(await page.locator('#deepseek-key').inputValue(),'');assert(!(await page.locator('body').innerText()).includes(stored));
   await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(root,'accounts-mobile.png')});assert.deepEqual(errors,[]);
+  await page.reload();await expect(page.locator('#accounts .account')).toHaveCount(2);await expect(page.locator('#connection')).toBeHidden();
+  const unavailable=route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"synthetic outage"}'});
+  await page.route('**/api/accounts/state*',unavailable);await page.reload();await expect(page.locator('#connection')).toContainText('登録情報を読み込めていません');await expect(page.locator('#add-account button')).toBeDisabled();await expect(page.locator('#empty-accounts')).toBeHidden();
+  await page.unroute('**/api/accounts/state*',unavailable);await page.locator('#retry-load').click();await expect(page.locator('#accounts .account')).toHaveCount(2);await expect(page.locator('#connection')).toBeHidden();await expect(page.locator('#add-account button')).toBeEnabled();assert.equal(accounts.state.accounts.length,2);
   console.log('PASS account UI: per-session model/account, remaining quota/reset, drafts, direct dispatch, private DeepSeek key, mobile');
 }finally{await browser?.close();jobs.close();accounts.close();await editor.close();await service.close();}

@@ -98,7 +98,15 @@ export class ExternalAccounts {
   submitCode(id,code){const login=this.logins.get(id);if(!login?.child||typeof code!=='string'||!code.trim()||code.length>16384||/[\r\n]/.test(code))throw Error('有効なログインコードを入力してください');login.child.stdin.write(JSON.stringify({code})+'\n');}
   async cancelLogin(id){const login=this.logins.get(id);if(login?.child){login.cancelled=true;login.child.kill();}if(login?.loginId)await (await this.connect(id)).request('account/login/cancel',{loginId:login.loginId});if(!login?.child)this.logins.delete(id);}
   async logout(id){if(this.isBusy?.(id))throw Error('このアカウントの作業を中止してからログアウトしてください');await this.cancelLogin(id);const a=this.account(id);if(a.provider==='codex')await (await this.connect(id)).request('account/logout');else await new Promise((resolve,reject)=>{const p=spawn(this.commands.devin,['auth','logout'],{cwd:this.profile(id),env:privateAgentEnv('devin',this.profile(id)),stdio:'ignore'});p.once('error',()=>reject(Error('ログアウトできませんでした')));p.once('exit',code=>code===0?resolve():reject(Error('ログアウトできませんでした')));});this.clients.get(id)?.close();this.live.delete(id);}
-  async snapshot(session,{refresh=false}={}){const selected=session?this.selection(session):null;if(selected&&refresh)await this.refresh(selected.accountId);return {accounts:this.state.accounts.map(a=>({...a,...this.live.get(a.id),login:this.logins.get(a.id)?.public||null})),selection:selected,jobs:session?this.jobs?.list(session)||[]:[],deepseek:this.credentials?await this.credentials.describe('DEEPSEEK_API_KEY'):{configured:false,writable:false}};}
+  async snapshot(session,{refresh=false}={}){
+    const selected=session?this.selection(session):null;
+    // Registrations are durable; live auth/model/quota data is rebuilt after
+    // server restart without blocking the list or treating it as logged out.
+    if(refresh)for(const a of this.state.accounts){
+      if(!this.logins.has(a.id)&&(a.id===selected?.accountId||!this.live.get(a.id)?.checkedAt))this.refresh(a.id).catch(()=>{});
+    }
+    return {accounts:this.state.accounts.map(a=>({...a,...this.live.get(a.id),checking:this.refreshing.has(a.id)&&!this.live.get(a.id)?.checkedAt,login:this.logins.get(a.id)?.public||null})),selection:selected,jobs:session?this.jobs?.list(session)||[]:[],deepseek:this.credentials?await this.credentials.describe('DEEPSEEK_API_KEY'):{configured:false,writable:false}};
+  }
   async deepseekKey(value){if(!this.credentials)throw Error('認証情報サービスが利用できません');if(value===null)return this.credentials.unset('DEEPSEEK_API_KEY');if(typeof value!=='string'||!/^[\x21-\x7e]{10,1024}$/.test(value.trim()))throw Error('有効なAPIキーを入力してください');await this.credentials.set('DEEPSEEK_API_KEY',value.trim());}
   close(){for(const l of this.logins.values())l.child?.kill();for(const rpc of this.clients.values())rpc.close();}
 }
